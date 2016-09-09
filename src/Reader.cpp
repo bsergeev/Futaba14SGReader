@@ -11,6 +11,7 @@ using namespace std::string_literals;
 const size_t arrSizeMax = 32767;
 const size_t chMax = 16;
 const size_t t14Channels = 12, t18Channels = 16;
+const size_t t14Conditions = 5, t18Conditions = 8;
 
 enum eTxType {
     INVALID_TX = 255, // <<< DEBUG
@@ -56,6 +57,18 @@ FunctionNames_t functionListMulti = {
     "Mode"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s, 
     "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s, 
     "Auxiliary2"s, "Auxiliary1"s, "--" };
+
+
+// & -> Long
+// % -> Integer
+// # -> Double
+// ! -> Single
+// @ -> Decimal
+// $ -> String
+
+std::array<std::wstring, t18Conditions>  conditionName;
+std::array<int,          t18Conditions> conditionState, conditionList;
+std::array<size_t,       t18Conditions> conditionHw;
 
 
 bool LoadFromFile(const std::string& fileName, std::vector<uint8_t>& data)
@@ -229,12 +242,96 @@ void getFunction(const std::vector<uint8_t>& data, eTxType txType, eModelType mo
 */
 }
 
+void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType modelType)
+{
+    const size_t addr14CondSelect = 451, addr18CondSelect = 64;
+    const size_t addr14CondName = 1700, addr18CondName = 28140;
+    const size_t addr14CondNameOffset = 9, addr18CondNameOffset = 578;
+
+    for (size_t i = 0; i < t18Conditions; ++i) {
+        conditionName[i] = L""; conditionState[i] = 0; conditionHw[i] = -1 /*hwOff*/; conditionList[i] = 0;
+    }
+    conditionState[0] = 128 + 15; 
+    conditionList [0] = 1;
+
+    // Get names of the conditions
+    const size_t numConditions = (txType == T18SZ)? t18Conditions : t14Conditions;
+    if (txType == T8FG) {
+        switch (modelType) {
+        case Heli:   conditionName[0] = L"NORMAL";   conditionName[1] = L"IDLEUP1"; conditionName[2] = L"IDLEUP2";
+            conditionName[3] = L"IDLEUP3";  conditionName[4] = L"HOLD";
+            break;
+        case Glider: conditionName[0] = L"NORMAL";   conditionName[1] = L"START"; conditionName[2] = L"SPEED";
+            conditionName[3] = L"DISTANCE"; conditionName[4] = L"LANDING";
+            break;
+        }
+    }
+    else // T18SZ or T14SZ
+    {
+        if (txType == T18SZ || modelType == Heli || modelType == Glider) 
+        {
+            for (size_t condIdx = 0; condIdx < numConditions; ++condIdx) 
+            {
+                std::array<wchar_t, 8 + 1> buffer;
+                buffer.fill(0);
+                for (size_t charIdx = 0; charIdx < 8; ++charIdx) 
+                {
+                    if (txType == T18SZ) { // UTF16
+                        const char hi = static_cast<const char>(data.at(addr18CondName + condIdx*addr18CondNameOffset + charIdx * 2));
+                        const char lo = static_cast<const char>(data.at(addr18CondName + condIdx*addr18CondNameOffset + charIdx * 2 + 1));
+                        buffer[charIdx] = static_cast<wchar_t>((hi << 8) + lo);
+                    } else { // T14SZ, 1-byte
+                        buffer[charIdx] = data.at(addr14CondName + condIdx*addr14CondNameOffset + charIdx);
+                    }
+
+                    if (buffer[charIdx] == 0) {
+                        break;
+                    }
+                }
+                conditionName[condIdx] = std::wstring{ buffer.data() };
+            }
+        }
+    }
+ 
+    if (txType == T18SZ || modelType == Heli || modelType == Glider) 
+    {
+        std::array<int, t18Conditions> cp; 
+        cp.fill(0);
+
+        const size_t addr = (txType == T18SZ)? addr18CondSelect : addr14CondSelect;
+        for (size_t i = 1; i < numConditions; ++i) {
+            const uint8_t v = data.at(addr + (i - 1) * 4);
+            const uint8_t m = v && 0x0F;
+            if (v > 127) {
+                conditionState[m] = 128 + i;
+                conditionHw   [m] = addr + (i - 1)*4 + 1; // <<< DEBUG "+1"?
+            }
+        }
+        conditionState[0] = 128 + 15;
+        for (size_t i = 1; i < t18Conditions;  ++i) {
+            if (conditionState[i] > 128) {
+                cp[conditionState[i] - 128] = i;
+            }
+        }
+
+        for (size_t j=1, i=t18Conditions-1; /* i >= 0 */; --i) {
+            if (cp[i] > 0) {
+                conditionList[j] = cp[i]; 
+                j = j + 1;
+            }
+            if (i == 0) {
+                break;
+            }
+        }
+
+    }
+}
+
 int main()
 {
     std::vector<uint8_t> data;
-    for (const char* fname : { "f:\\My\\Projects\\FutabaReader\\KatanaMX",
-                               "f:\\My\\Projects\\FutabaReader\\3DHKatana",
-                               "f:\\My\\Projects\\FutabaReader\\ShurikBipe" })
+    for (const char* fname : { "data\\KatanaMX",  "data\\3DHKatana",
+                               "data\\ShurikBipe","data\\FASSTest-2" })
     {
         LoadFromFile(fname, data);
 
@@ -260,6 +357,19 @@ int main()
         const size_t numChannels = (txType == T18SZ)? t18Channels : t14Channels;
         for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
             std::cout << "\t" << chIdx + 1 << ": "<< fa[functn[chIdx]] << std::endl;
+        }
+
+        getConditions(data, txType, modelType);
+        if (txType == T18SZ || modelType == Heli || modelType == Glider) {
+            std::cout << "Condition #" << std::endl;
+            const size_t numConditions = (txType == T18SZ)? t18Conditions : t14Conditions;
+            for (size_t condIdx = 0; condIdx < numConditions; ++condIdx) {
+                std::wcout << L"\t" << condIdx + 1 << L": " << conditionName[condIdx]
+                    << L", state: "<< conditionState[condIdx]
+                    << L", list: " << conditionList [condIdx]
+                    << std::endl;
+                ;
+            }
         }
 
         std::cout << "-------------------" << std::endl;
