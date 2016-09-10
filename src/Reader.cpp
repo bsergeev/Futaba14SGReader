@@ -202,50 +202,15 @@ void getFunction(const std::vector<uint8_t>& data, eTxType txType, eModelType mo
         functn[i] = data.at(addr + i);
     }
     switch (modelType) {
-    case Plane:
-    case Glider: fa = functionListAir;
-                 break;
-    case Heli:   fa = functionListHeli;
-                 break;
-    case Multi:  fa = functionListMulti;
-                 break;
+      case Plane:
+      case Glider: fa = functionListAir;   break;
+      case Heli:   fa = functionListHeli;  break;
+      case Multi:  fa = functionListMulti; break;
     }
     if (txType != T18SZ && modelType == Plane) {
         fa[25] = "VPP"s;
         return;
     }
-/*
-    const size_t addr18AuxName = 25300, len18AuxName = 10; const size_t offs18AuxName = (len18AuxName + 1) * 2;
-    const size_t addr18AuxAbbr = 25476, len18AuxAbbr = 4;  const size_t offs18AuxAbbr = (len18AuxAbbr + 1) * 2;
-    const size_t t14ChannelsLow = 8, t18ChannelsLow = 12, t18PointsMax = 17, t18fTunePoints = 11;
-    std::array<uint8_t, len18AuxName - 1> bName;
-    std::array<uint8_t, len18AuxAbbr - 1> bAbbr;
-    for (size_t i = 0;  i < auxFunctionNumber;  ++i)
-    {
-        f = True
-        for (size_t j = 0 To len18AuxName - 1
-            if (f) {
-                bName(j) = data(addr18AuxName + i * offs18AuxName + j * 2 + 1): if (bName(j) = 0) { bName(j) = 32: f = False
-            Else
-                bName(j) = 32
-            End if ( // f
-        }
-        auxFunctionName(i) = RTrim(StrConv(bName, vbUnicode))
-        if (auxFunctionName(i) = "") { auxFunctionName(i) = fa(functionNumber - 2 - i) Else fa(functionNumber - 2 - i) = auxFunctionName(i)
-        f = True
-        for (size_t j = 0 To len18AuxAbbr - 1
-            if (f) {
-                bAbbr(j) = data(addr18AuxAbbr + i * offs18AuxAbbr + j * 2 + 1): if (bAbbr(j) = 0) { bAbbr(j) = 32: f = False
-            Else
-                bAbbr(j) = 32
-            End if ( // f
-        }
-        auxFunctionAbbr(i) = RTrim(StrConv(bAbbr, vbUnicode))
-        if (auxFunctionAbbr(i) = "") {
-            if ((i = 7) && (modelType <> Heli)) { auxFunctionAbbr(i) = "MOT" Else auxFunctionAbbr(i) = "AUX" & CStr(i + 1)
-        End if ( // auxFunctionAbbr(i) = ""
-    }
-*/
 }
 
 void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType modelType)
@@ -380,10 +345,10 @@ void endEndPoints(const std::vector<uint8_t>& data, eTxType txType)
 }
 
 uint8_t cServoSpeed(uint8_t y) {
-    if      (y < 67) { return static_cast<uint8_t>(round( y / 10)); }
-    else if (y < 78) { return static_cast<uint8_t>(round((y - 67)/4) + 7); }
-    else if (y == 78){ return y - 68; }
-    else if (y < 88) { return static_cast<uint8_t>(round((y - 80)/3) + 11); }
+    if (y < 67)  { return static_cast<uint8_t>(round( y / 10)); }
+    if (y < 78)  { return static_cast<uint8_t>(round((y - 67)/4) + 7); }
+    if (y == 78) { return 10; } // y - 68;
+    if (y < 88)  { return static_cast<uint8_t>(round((y - 80)/3) + 11); }
     return  (y - 74);
 }
 
@@ -435,7 +400,7 @@ int main()
                                //"data\\KatanaMX",  "data\\3DHKatana",
                                //"data\\ShurikBipe","data\\FASSTest-2" 
                                //"data\\COND_SA",  
-        "data\\COND_SA2"
+                               "data\\COND_SA2"
                              })
     {
         const bool loaded = LoadFromFile(fname, data);
@@ -464,17 +429,17 @@ int main()
             const size_t numChannels = (txType == T18SZ)? t18Channels : t14Channels;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
                 std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
-                    << ((reversed[chIdx])? "REVERS" : "      "/*"normal"*/) << "  "
+                    << ((reversed[chIdx])? "REVERSED" : "        "/*"normal"*/) << "  "
                     << std::right << std::setw(3) << (int)limitLo[chIdx] << "  " << std::setw(3) << (int)travelLo[chIdx] << "   "
                     << std::setw(3) << (int)travelHi[chIdx] << "  " << std::setw(3) << (int)limitHi[chIdx] << std::endl;
             }
             
             getServoSpeed(data, txType);
-            getSubTrim(data, txType);
+            getSubTrim   (data, txType);
             std::cout << "Servo Speed & SubTrim" << std::endl;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-                std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
-                    << std::right << std::setw(3) << (int)cServoSpeed(sSpeed[chIdx]) << "  " << std::setw(3) << (int)sTrim[chIdx] << std::endl;
+                std::cout << "\t" << std::setw(2) << chIdx + 1 <<" "<< std::setw(10) << std::left << fa[functn[chIdx]] << ": "
+                    << std::right << std::setw(3) << (int)cServoSpeed(sSpeed[chIdx]) <<"  "<< std::setw(3) << (int)sTrim[chIdx] << std::endl;
             }
 
             getConditions(data, txType, modelType);
