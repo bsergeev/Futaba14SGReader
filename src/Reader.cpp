@@ -4,6 +4,7 @@
 #include <iomanip>  // std::setw
 #include <iostream>
 #include <fstream>  // std::ifstream
+#include <math.h>   // round
 #include <string>
 #include <vector>
 
@@ -34,6 +35,8 @@ uint8_t m_tailType = 0;
 std::array<bool, chMax> reversed;
 std::array<bool, 2>     reversedDG;
 std::array<uint8_t, chMax> travelLo, travelHi, limitLo, limitHi;
+std::array<uint8_t, chMax> sSpeed; // [0, 27]
+std::array<int16_t, chMax> sTrim;  // [-240, 240]
 
 std::array<uint8_t, chMax> functn; // value is the index of FunctionNames_t, i.e. < 33
 
@@ -100,7 +103,7 @@ bool LoadFromFile(const std::string& fileName, std::vector<uint8_t>& data)
     return ok;
 }
 
-eTxType getTransType(const std::vector<uint8_t>& data)
+eTxType getTxType(const std::vector<uint8_t>& data)
 {
     const size_t TX_ID_LENGTH = 8;
     std::array<char, TX_ID_LENGTH+1>  buffer;
@@ -162,9 +165,9 @@ eModelType getModelType(const std::vector<uint8_t>& data, eTxType txType)
     return modelType;
 }
 
-int getModulation(const std::vector<uint8_t>& data, eTxType txType)
+size_t getModulation(const std::vector<uint8_t>& data, eTxType txType)
 {
-    int sysModulation = 0;
+    size_t sysModulation = 0;
 
     const size_t addr14sysTyp = 154, div14sysTyp = 1;
     const size_t addr18sysTyp = 92,  div18sysTyp = 16;
@@ -173,12 +176,9 @@ int getModulation(const std::vector<uint8_t>& data, eTxType txType)
     if (txType == T8FG) {
         const size_t v = ((data.at(am) & 0x30) + (data.at(am + 1) & 0x80)) >> 4;
         switch (v) {
-        case 1: sysModulation = 1;
-                break;
-        case 3: sysModulation = 0;
-                break;
-        case 9: sysModulation = 2;
-                break;
+            case 1: sysModulation = 1; break;
+            case 3: sysModulation = 0; break;
+            case 9: sysModulation = 2; break;
         }
     } else {
         const size_t dm = (txType == T18SZ)? div18sysTyp : div14sysTyp;
@@ -377,51 +377,71 @@ void endEndPoints(const std::vector<uint8_t>& data, eTxType txType)
         j = (i < ln)? all + i*2 : alh + (i - ln)*2;
         limitLo[i] = data.at(j); limitHi[i] = data.at(j + 1);
     }
-/*
-    uf.ch1Function = fa(functn(1)); uf.ch2Function = fa(functn(2)); uf.ch3Function = fa(functn(3)); uf.ch4Function = fa(functn(4))
-    uf.ch5Function = fa(functn(5)); uf.ch6Function = fa(functn(6)); uf.ch7Function = fa(functn(7)); uf.ch8Function = fa(functn(8))
-    uf.ch9Function = fa(functn(9)); uf.ch10Function = fa(functn(10)); uf.ch11Function = fa(functn(11)); uf.ch12Function = fa(functn(12))
-    uf.ch1TrlL = CStr(travel(1, 1)); uf.ch1TrlR = CStr(travel(1, 2)); uf.ch2TrlL = CStr(travel(2, 1)); uf.ch2TrlR = CStr(travel(2, 2))
-    uf.ch3TrlL = CStr(travel(3, 1)); uf.ch3TrlR = CStr(travel(3, 2)); uf.ch4TrlL = CStr(travel(4, 1)); uf.ch4TrlR = CStr(travel(4, 2))
-    uf.ch5TrlL = CStr(travel(5, 1)); uf.ch5TrlR = CStr(travel(5, 2)); uf.ch6TrlL = CStr(travel(6, 1)); uf.ch6TrlR = CStr(travel(6, 2))
-    uf.ch7TrlL = CStr(travel(7, 1)); uf.ch7TrlR = CStr(travel(7, 2)); uf.ch8TrlL = CStr(travel(8, 1)); uf.ch8TrlR = CStr(travel(8, 2))
-    uf.ch9TrlL = CStr(travel(9, 1)); uf.ch9TrlR = CStr(travel(9, 2)); uf.ch10TrlL = CStr(travel(10, 1)); uf.ch10TrlR = CStr(travel(10, 2))
-    uf.ch11TrlL = CStr(travel(11, 1)); uf.ch11TrlR = CStr(travel(11, 2)); uf.ch12TrlL = CStr(travel(12, 1)); uf.ch12TrlR = CStr(travel(12, 2))
-    uf.ch1LimL = CStr(limit(1, 1)); uf.ch1LimR = CStr(limit(1, 2)); uf.ch2LimL = CStr(limit(2, 1)); uf.ch2LimR = CStr(limit(2, 2))
-    uf.ch3LimL = CStr(limit(3, 1)); uf.ch3LimR = CStr(limit(3, 2)); uf.ch4LimL = CStr(limit(4, 1)); uf.ch4LimR = CStr(limit(4, 2))
-    uf.ch5LimL = CStr(limit(5, 1)); uf.ch5LimR = CStr(limit(5, 2)); uf.ch6LimL = CStr(limit(6, 1)); uf.ch6LimR = CStr(limit(6, 2))
-    uf.ch7LimL = CStr(limit(7, 1)); uf.ch7LimR = CStr(limit(7, 2)); uf.ch8LimL = CStr(limit(8, 1)); uf.ch8LimR = CStr(limit(8, 2))
-    uf.ch9LimL = CStr(limit(9, 1)); uf.ch9LimR = CStr(limit(9, 2)); uf.ch10LimL = CStr(limit(10, 1)); uf.ch10LimR = CStr(limit(10, 2))
-    uf.ch11LimL = CStr(limit(11, 1)); uf.ch11LimR = CStr(limit(11, 2)); uf.ch12LimL = CStr(limit(12, 1)); uf.ch12LimR = CStr(limit(12, 2))
-    uf.ch13Label.Visible = isT18SZ; uf.ch14Label.Visible = isT18SZ; uf.ch15Label.Visible = isT18SZ; uf.ch16Label.Visible = isT18SZ
-    uf.ch13Function.Visible = isT18SZ; uf.ch14Function.Visible = isT18SZ; uf.ch15Function.Visible = isT18SZ; uf.ch16Function.Visible = isT18SZ
-    uf.ch13TrlL.Visible = isT18SZ; uf.ch13TrlR.Visible = isT18SZ; uf.ch14TrlL.Visible = isT18SZ; uf.ch14TrlR.Visible = isT18SZ
-    uf.ch15TrlL.Visible = isT18SZ; uf.ch15TrlR.Visible = isT18SZ; uf.ch16TrlL.Visible = isT18SZ; uf.ch16TrlR.Visible = isT18SZ
-    uf.ch13LimL.Visible = isT18SZ; uf.ch13LimR.Visible = isT18SZ; uf.ch14LimL.Visible = isT18SZ; uf.ch14LimR.Visible = isT18SZ
-    uf.ch15LimL.Visible = isT18SZ; uf.ch15LimR.Visible = isT18SZ; uf.ch16LimL.Visible = isT18SZ; uf.ch16LimR.Visible = isT18SZ
+}
+
+uint8_t cServoSpeed(uint8_t y) {
+    if      (y < 67) { return static_cast<uint8_t>(round( y / 10)); }
+    else if (y < 78) { return static_cast<uint8_t>(round((y - 67)/4) + 7); }
+    else if (y == 78){ return y - 68; }
+    else if (y < 88) { return static_cast<uint8_t>(round((y - 80)/3) + 11); }
+    return  (y - 74);
+}
+
+void getServoSpeed(const std::vector<uint8_t>& data, eTxType txType)
+{
+    sSpeed.fill(0);
+
+    const size_t addr14sSpLo = 1812, addr14sSpHi = 1828, addr18sSpLo = 438, addr18sSpHi = 594;
+    const bool isT18SZ = (txType == T18SZ);
+    size_t al, ah, ln, k;
     if (isT18SZ) {
-        uf.ch13Function = fa(functn(13)); uf.ch14Function = fa(functn(14)); uf.ch15Function = fa(functn(15)); uf.ch16Function = fa(functn(16))
-        uf.ch13TrlL = CStr(travel(13, 1)); uf.ch13TrlR = CStr(travel(13, 2)); uf.ch14TrlL = CStr(travel(14, 1)); uf.ch14TrlR = CStr(travel(14, 2))
-        uf.ch15TrlL = CStr(travel(15, 1)); uf.ch15TrlR = CStr(travel(15, 2)); uf.ch16TrlL = CStr(travel(16, 1)); uf.ch16TrlR = CStr(travel(16, 2))
-        uf.ch13LimL = CStr(limit(13, 1)); uf.ch13LimR = CStr(limit(13, 2)); uf.ch14LimL = CStr(limit(14, 1)); uf.ch14LimR = CStr(limit(14, 2))
-        uf.ch15LimL = CStr(limit(15, 1)); uf.ch15LimR = CStr(limit(15, 2)); uf.ch16LimL = CStr(limit(16, 1)); uf.ch16LimR = CStr(limit(16, 2))
+        al = addr18sSpLo; ah = addr18sSpHi; ln = t18ChannelsLow; k = 1;
+    } else {
+        al = addr14sSpLo; ah = addr14sSpHi; ln = t14ChannelsLow; k = 2;
     }
-*/
+    const size_t numChannels = (isT18SZ)? t18Channels : t14Channels;
+    for (size_t i = 0; i < numChannels; ++i) {
+        const size_t j = (i < ln)? al + i*k : ah + (i - ln)*k;
+        sSpeed[i] = data.at(j);
+    }
+}
+
+void getSubTrim(const std::vector<uint8_t>& data, eTxType txType)
+{
+    sTrim.fill(0);
+
+    const size_t  addr14sTrLo = 306, addr14sTrHi = 166, addr18sTrLo = 414, addr18sTrHi = 586;
+    const bool isT18SZ = (txType == T18SZ);
+    size_t al, ah, ln;
+    if (isT18SZ) {
+        al = addr18sTrLo; ah = addr18sTrHi; ln = t18ChannelsLow; 
+    } else { 
+        al = addr14sTrLo; ah = addr14sTrHi; ln = t14ChannelsLow; 
+    }
+    const size_t numChannels = (isT18SZ)? t18Channels : t14Channels;
+    for (size_t i = 0; i < numChannels; ++i) {
+        const size_t j = (i < ln)? al + i*2 : ah + (i - ln)*2;
+        const uint8_t hi = data.at(j);
+        const uint8_t lo = data.at(j + 1);
+        sTrim[i] = (hi << 8) | lo;
+    }
 }
 
 
 int main()
 {
     std::vector<uint8_t> data;
-    for (const char* fname : { "data\\KatanaMX",  "data\\3DHKatana",
-                               "data\\ShurikBipe","data\\FASSTest-2" 
-                               "data\\COND_SA", "data\\COND_SA2"
+    for (const char* fname : { 
+                               //"data\\KatanaMX",  "data\\3DHKatana",
+                               //"data\\ShurikBipe","data\\FASSTest-2" 
+                               //"data\\COND_SA",  
+        "data\\COND_SA2"
                              })
     {
         const bool loaded = LoadFromFile(fname, data);
         if (loaded && !data.empty())
         {
-            const eTxType txType = getTransType(data);
+            const eTxType txType = getTxType(data);
             std::cout << "TX: " << ((txType == INVALID_TX)? "INVALID" : std::array<char*, 3>{"T8FG", "T14SG", "T18SZ"}[txType]) << std::endl;
 
             const std::wstring txName = getModelName(data, txType);
@@ -430,13 +450,12 @@ int main()
             const eModelType modelType = getModelType(data, txType);
             std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" : std::array<char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << std::endl;
 
-            const char* modulationList[16] = {
-                "FASST 7CH",     "FASST MULTI", "FASST MLT2",    "--",
-                "S-FHSS",        "--",          "--",            "--",
-                "FASSTest 14CH", "--",          "FASSTest 12CH", "--",
-                "T-FHSS",        "--",          "--",            "--" };
-            int m = getModulation(data, txType);
-            std::cout << "Modulation: " << modulationList[m] << std::endl;
+            const size_t modulation = getModulation(data, txType);
+            const char* modulationList[16] = {"FASST 7CH",     "FASST MULTI", "FASST MLT2",    "--",
+                                              "S-FHSS",        "--",          "--",            "--",
+                                              "FASSTest 14CH", "--",          "FASSTest 12CH", "--",
+                                              "T-FHSS",        "--",          "--",            "--" };
+            std::cout << "Modulation: " << modulationList[modulation] << std::endl;
 
             getFunction   (data, txType, modelType);
             getServoRevers(data, txType);
@@ -448,6 +467,14 @@ int main()
                     << ((reversed[chIdx])? "REVERS" : "      "/*"normal"*/) << "  "
                     << std::right << std::setw(3) << (int)limitLo[chIdx] << "  " << std::setw(3) << (int)travelLo[chIdx] << "   "
                     << std::setw(3) << (int)travelHi[chIdx] << "  " << std::setw(3) << (int)limitHi[chIdx] << std::endl;
+            }
+            
+            getServoSpeed(data, txType);
+            getSubTrim(data, txType);
+            std::cout << "Servo Speed & SubTrim" << std::endl;
+            for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+                std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
+                    << std::right << std::setw(3) << (int)cServoSpeed(sSpeed[chIdx]) << "  " << std::setw(3) << (int)sTrim[chIdx] << std::endl;
             }
 
             getConditions(data, txType, modelType);
