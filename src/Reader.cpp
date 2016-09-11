@@ -12,6 +12,7 @@ using namespace std::string_literals;
 
 const size_t arrSizeMax = 32767;
 const size_t chMax = 16;
+const size_t functionNumber = 33;
 const size_t t14Channels = 12,   t18Channels = 16;
 const size_t t14Conditions = 5,  t18Conditions = 8;
 const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
@@ -37,6 +38,7 @@ std::array<bool, 2>     reversedDG;
 std::array<uint8_t, chMax> travelLo, travelHi, limitLo, limitHi;
 std::array<uint8_t, chMax> sSpeed; // [0, 27]
 std::array<int16_t, chMax> sTrim;  // [-240, 240]
+std::array<std::string, chMax> control, trim;
 
 std::array<uint8_t, chMax> functn; // value is the index of FunctionNames_t, i.e. < 33
 
@@ -49,7 +51,7 @@ FunctionNames_t functionListAir = {
     "Gyro3"s, "Throttle2"s, "Throttle3"s, "Throttle4"s, "Flap3"s, 
     "Flap4"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s, 
     "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s, 
-    "Auxiliary2"s, "Auxiliary1"s, "--" };
+    "Auxiliary2"s, "Auxiliary1"s, "--"s };
 FunctionNames_t functionListHeli = {
     "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s, 
     "Pitch"s, "Governor"s, "Governor2"s, "Aileron4"s, "Elevator2"s,
@@ -57,7 +59,7 @@ FunctionNames_t functionListHeli = {
     "Gyro3"s, "Throttle2"s, "Throttle3"s, "Throttle4"s, "Flap3"s, 
     "Flap4"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Auxiliary8"s, 
     "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s, 
-    "Auxiliary2"s, "Auxiliary1"s, "--" };
+    "Auxiliary2"s, "Auxiliary1"s, "--"s };
 FunctionNames_t functionListMulti = {
     "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s, 
     "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s, 
@@ -65,7 +67,12 @@ FunctionNames_t functionListMulti = {
     "Gyro3"s, "Camera roll"s, "Camera tilt"s, "Camera pan"s, "Camera rec"s, 
     "Mode"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s, 
     "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s, 
-    "Auxiliary2"s, "Auxiliary1"s, "--" };
+    "Auxiliary2"s, "Auxiliary1"s, "--"s };
+
+std::array<std::string, 32> hwCtrlDesc = { 
+    "J1"s, "J2"s, "J4"s, "J3"s, "SC"s, "SD"s, "SG"s, "SH"s, "RD"s, "RS"s, 
+    "OA"s, "0B"s, "SA"s, "SB"s, "SE"s, "SF"s, "LD"s, "11"s, "LS"s, "13"s,
+    "T1"s, "T2"s, "T4"s, "T3"s, "T5"s, "T6"s, "T7"s, "1B"s, "1C"s, "1D"s, "1E"s, "--"s };
 
 
 // & -> Long
@@ -392,6 +399,43 @@ void getSubTrim(const std::vector<uint8_t>& data, eTxType txType)
     }
 }
 
+void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eModelType modelType)
+{
+    size_t cond = 0; // <<< DEBUG
+
+    const size_t addr18CondStart = 640, t18CondLength = 3056, addr18fnXC = 118;
+    const size_t addr14fnGrBfly = 1545, addr14fnGrCamb = 1453, addr14fnGrMot = 1539;
+    const size_t addr14fnXC = 190, addr14fnCtrl = 222, addr14fnTrim = 234, addr14fnTRt = 246, addr14fnTSg = 258;
+
+    if (txType == T18SZ)
+    {
+        const size_t  ac = addr18CondStart, lc = t18CondLength, axc = addr18fnXC;
+        for (size_t i = 0; i < chMax; ++i) {
+            size_t a1 = axc + functn[i];
+            size_t a2 = ac + lc * (conditionList[cond] - 1) + data.at(a1);
+            control[i] = (data.at(a2) > 31)? "--" : hwCtrlDesc[data.at(a2)];
+            a1 = axc + functn[i] + functionNumber - 1;
+            a2 = ac + lc * (conditionList[cond] - 1) + chMax + data.at(a1);
+            trim[i] = (data.at(a2) > 31)? "--" : hwCtrlDesc[data.at(a2)];
+        }
+    } else {
+        std::array<size_t, 25> ag;
+        ag[22] = addr14fnGrBfly; ag[23] = addr14fnGrCamb; ag[24] = addr14fnGrMot;
+        for (size_t i = 0; i < 12; ++i) {
+            size_t a2 = addr14fnCtrl + data.at(addr14fnXC + functn[i]);
+            if (functn[i] >= 22 && functn[i] <= 24 && modelType == Glider) {
+                size_t a1 = ag[functn[i]];
+                if (data.at(a1) > 127) {
+                    a2 = a1 + conditionList[cond];
+                }
+            }
+            control[i] = (data.at(a2) > 31)? "--" : hwCtrlDesc[data.at(a2)];
+            a2 = addr14fnTrim + data.at(addr14fnXC + functn[i]);
+            trim[i] = (data.at(a2) > 31)? "--" : hwCtrlDesc[data.at(a2)];
+        }
+    }
+}
+
 
 int main()
 {
@@ -429,9 +473,12 @@ int main()
             const size_t numChannels = (txType == T18SZ)? t18Channels : t14Channels;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
                 std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
-                    << ((reversed[chIdx])? "REVERSED" : "        "/*"normal"*/) << "  "
+                    << ((reversed[chIdx])? "REVERSED" : "normal  ") << "  "
                     << std::right << std::setw(3) << (int)limitLo[chIdx] << "  " << std::setw(3) << (int)travelLo[chIdx] << "   "
                     << std::setw(3) << (int)travelHi[chIdx] << "  " << std::setw(3) << (int)limitHi[chIdx] << std::endl;
+            }
+            for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
+                std::cout << "\t" << std::setw(2) << chIdx + 13 << " DG"<< chIdx <<"       : "<< ((reversedDG[chIdx])? "REVERSED" : "normal")<< std::endl;
             }
             
             getServoSpeed(data, txType);
@@ -454,6 +501,14 @@ int main()
                     ;
                 }
             }
+            
+            getControlAssignment(data, txType, modelType);
+            std::cout << "Function" << std::endl;
+            for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+                std::cout << "\t" << std::setw(2) << chIdx + 1 <<" "<< std::setw(10) << std::left << fa[functn[chIdx]] << ": "
+                    << std::right << control[chIdx] <<"  "<< trim[chIdx] << std::endl;
+            }
+
         } else {
             std::cout << "Failed to load \""<< fname <<"\"" << std::endl;
         }
