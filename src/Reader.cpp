@@ -427,7 +427,7 @@ HwNamnes getHardware(const std::vector<uint8_t>& data, size_t a)
 {
     HwNamnes hw;
     const uint8_t hC0 = data.at(a);
-    union { uint8_t i1; int8_t signed_i1; }; i1 = data.at(a + 1);
+    const uint8_t i1 = data.at(a + 1);
     const uint8_t i2 = data.at(a + 2);
     if (hC0 == 0xFF) {
         hw.Type = -1; hw.Ctrl = "--";
@@ -454,8 +454,8 @@ HwNamnes getHardware(const std::vector<uint8_t>& data, size_t a)
     }
     hw.Type = 0; // Analog input
     hw.Rev = (hR == 0)? "Normal" : "Reverse";
-    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { hw.Sym = "Symmetry"; hw.Pos = std::to_string(round(     i2 * 100.0 / 64)); return hw; }
-    if (i1 - i2 == 1)                             { hw.Sym = "Linear";   hw.Pos = std::to_string(round(signed_i1*100.0 / 64)); return hw; }
+    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { hw.Sym = "Symmetry"; hw.Pos = std::to_string(round(static_cast<int8_t>(i2)*100.0 / 64)); return hw; }
+    if (i1 - i2 == 1)                             { hw.Sym = "Linear";   hw.Pos = std::to_string(round(static_cast<int8_t>(i1)*100.0 / 64)); return hw; }
     hw.Pos = "Error!!!"; hw.Rev = ""; hw.Sym = "";
     return hw;
 }
