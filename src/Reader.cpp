@@ -101,7 +101,12 @@ FunctionNames_t functionListMulti = {
 std::array<std::wstring, t18Conditions> conditionName;
 std::array<size_t,       t18Conditions> conditionState, conditionList;
 std::array<size_t,       t18Conditions> conditionHw;
+std::array<std::string, 2> digiCtrl;
 
+struct HwNamnes {
+    int8_t Type = -1;
+    std::string Ctrl, Pos, Rev, Sym;
+};
 
 bool LoadFromFile(const std::string& fileName, std::vector<uint8_t>& data)
 {
@@ -418,6 +423,43 @@ void getSubTrim(const std::vector<uint8_t>& data, eTxType txType)
     }
 }
 
+HwNamnes getHardware(const std::vector<uint8_t>& data, size_t a)
+{
+    HwNamnes hw;
+    const uint8_t hC0 = data.at(a);
+    union { uint8_t i1; int8_t signed_i1; }; i1 = data.at(a + 1);
+    const uint8_t i2 = data.at(a + 2);
+    if (hC0 == 0xFF) {
+        hw.Type = -1; hw.Ctrl = "--";
+        hw.Pos = (i1 != 0 || i2 != 0)? "OFF" : "ON";
+        return hw;
+    }
+    const uint8_t hR = hC0 & 0x40;
+    const uint8_t hC = hC0 & 0x3F;
+    if (hC >= 32) { hw.Ctrl = "Logic"; return hw; }
+    hw.Ctrl = hwCtrlDesc[hC];
+    if ((hC & 0x34) == 4) {
+        if ((hC & 0x37) == 7) {
+            hw.Type = 2; // 2-position switch
+            hw.Pos = (hR == 0)? "OFF/ON" : "ON/OFF";
+            return hw;
+        }
+        hw.Type = 3; // 3 - position switch
+        if (hR != 0)                          { hw.Pos = "ON/OFF/ON";  return hw; }
+        if ((i1 & 0x80) == 0 && i2 >= 0x40)   { hw.Pos = "OFF/OFF/ON"; return hw; }
+        if ((i1 & 0x80) != 0 && i2 >= 0x40)   { hw.Pos = "OFF/ON/ON";  return hw; }
+        if ((i1 >= 0xC0) && (i2 & 0x80) == 0) { hw.Pos = "ON/ON/OFF";  return hw; }
+        if ((i1 >= 0xC0) && (i2 & 0x80) != 0) { hw.Pos = "ON/OFF/OFF"; return hw; }
+        else                                  { hw.Pos = "OFF/ON/OFF"; return hw; }
+    }
+    hw.Type = 0; // Analog input
+    hw.Rev = (hR == 0)? "Normal" : "Reverse";
+    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { hw.Sym = "Symmetry"; hw.Pos = std::to_string(round(     i2 * 100.0 / 64)); return hw; }
+    if (i1 - i2 == 1)                             { hw.Sym = "Linear";   hw.Pos = std::to_string(round(signed_i1*100.0 / 64)); return hw; }
+    hw.Pos = "Error!!!"; hw.Rev = ""; hw.Sym = "";
+    return hw;
+}
+
 void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eModelType modelType)
 {
     const size_t addr18CondStart = 640, t18CondLength = 3056, addr18fnXC = 118;
@@ -425,15 +467,18 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
     const size_t addr14fnXC = 190, addr14fnCtrl = 222, addr14fnTrim = 234;
     const size_t addr18fnTRt = 182, addr18fnTSg = 519;
     const size_t addr14fnTRt = 246, addr14fnTSg = 258;
+    const size_t addr18dgCtrl = 450, addr14dgCtrl = 322, addr14dgAlt = 681;
 
     assert(numConditions > 0);
     m_conditionalData.resize(numConditions);
+
+    const bool isT18SZ = (txType == T18SZ);
 
     // Control assignments for each condition
     for (size_t condIdx = 0; condIdx < numConditions; ++condIdx)
     {
         auto& cd = m_conditionalData.at(condIdx);
-        if (txType == T18SZ)
+        if (isT18SZ)
         {
             const size_t  ac = addr18CondStart, lc = t18CondLength, axc = addr18fnXC;
             for (size_t i = 0; i < t18Channels; ++i) {
@@ -460,55 +505,56 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
             }
         }
     }
-/*
+
     // Controls for DGs (same for all conditions)
+    const std::string ls = "                        ";
     for (size_t ch = 0; ch < 2; ++ch)
     {
-        //Const ls$ = "                        "
-        //Dim i&, m%, l$, alt$
-        if (txType == T18SZ)
+        if (isT18SZ)
         {
             if ((data.at(addr18dgCtrl + ch*3) & 48) == 48) 
             {
-                getHardware(addr18dgCtrl + ((data.at(addr18dgCtrl + (ch - 1) * 3) & 7) + 1) * 6);
-                alt = hwCtrl & " " & hwPos & " " & hwRev & " " & hwSym
-                if (data.at(addr18dgCtrl + ch*3 + 1) And 128) {
-                    alt = alt & " Alternate";
+                auto hw = getHardware(data, addr18dgCtrl + ((data.at(addr18dgCtrl + ch*3) & 7) + 1) * 6);
+                std::string alt = hw.Ctrl +" "+ hw.Pos +" "+ hw.Rev +" "+ hw.Sym;
+                if (data.at(addr18dgCtrl + ch*3 + 1) & 128) {
+                    alt = alt + " Alternate";
                 }
+                std::string l;
                 switch (data.at(addr18dgCtrl + ch * 3 + 1) % 4) {
                 case 0: l = "AND";     break;
                 case 1: l = "OR";      break;
                 case 2: l = "EX-OR";   break;
                 case 3: l = "!UNDEF!"; break;
                 }
-                alt = alt & "   " & l & "   "
-                getHardware(addr18dgCtrl + ((data.at(addr18dgCtrl + ch * 3) & 7) + 1) * 6 + 3);
-                alt = alt & hwCtrl & " " & hwPos & " " & hwRev & " " & hwSym
-                if (data.at(addr18dgCtrl + ch*3 + 1) And 64) { 
-                    alt = alt & " Alternate";
+                alt = alt + "   " + l + "   ";
+                hw = getHardware(data, addr18dgCtrl + ((data.at(addr18dgCtrl + ch * 3) & 7) + 1) * 6 + 3);
+                alt = alt + hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
+                if (data.at(addr18dgCtrl + ch*3 + 1) & 0x40) { 
+                    alt = alt + " Alternate";
                 }
-                digiCtrl = alt
+                digiCtrl[ch] = alt;
             } else {
-                getHardware(addr18dgCtrl + ch * 3);
-                digiCtrl = ls & hwCtrl & "  " & hwPos & "  " & hwRev & "  " & hwSym
+                auto hw = getHardware(data, addr18dgCtrl + ch * 3);
+                digiCtrl[ch] = ls + hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
             }
-        } else {
+        } else { // <<< DEBUG TBD: handle 'Logic' for 14SG
             const uint8_t m = 1 << ch;
-            alt = (data.at(addr14dgAlt) & m)? "Alternate" : "";
-            getHardware(addr14dgCtrl + ch * 3);
-            digiCtrl = ls & hwCtrl & "  " & hwPos & "  " & hwRev & "  " & hwSym & "  " & alt
+            std::string alt = (data.at(addr14dgAlt) & m)? "Alternate" : "";
+            auto hw = getHardware(data, addr14dgCtrl + ch * 3);
+            digiCtrl[ch] = ls + hw.Ctrl +"  "+ hw.Pos +"  "+ hw.Rev +"  "+ hw.Sym +"  "+ alt;
         }
     }
-*/
+
     // Trim rates
-    for (size_t chIdx = 0; chIdx < chMax; ++chIdx) {
+    const size_t numChannels = (isT18SZ)? t18Channels : t14Channels;
+    for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
         size_t atr, ats, x;
-        if (txType == T18SZ) {
+        if (isT18SZ) {
             atr = addr18fnTRt; ats = addr18fnTSg; x = functn[chIdx];
         } else {
             atr = addr14fnTRt; ats = addr14fnTSg; x = data.at(addr14fnXC + functn[chIdx]);
         }
-        uint8_t m = 1 << (x % 8);
+        const uint8_t m = 1 << (x % 8);
         trimRate[chIdx] = ((data.at(ats + x / 8) & m)? -1 : 1) * data.at(atr + x);
     }
 }
@@ -520,8 +566,8 @@ int main()
     for (const char* fname : { 
                                //"data\\KatanaMX",  "data\\3DHKatana",
                                //"data\\ShurikBipe",
-                               //"data\\FASSTest-2", "data\\COND_SA",  
-                               "data\\COND_SA2"
+                               //"data\\FASSTest-2",    
+                               "data\\COND_SA"//,"data\\COND_SA2"
                              })
     {
         const bool loaded = LoadFromFile(fname, data);
@@ -590,6 +636,9 @@ int main()
                     std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
                         << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[cd.trim[chIdx]] 
                         << "  "<< std::showpos << trimRate[chIdx] <<"%" << std::endl;
+                }
+                for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
+                    std::cout << "\t" << std::setw(2) << chIdx+13 << " DG"<< chIdx <<"       : "<< digiCtrl[chIdx] << std::endl;
                 }
             }
 
