@@ -30,6 +30,10 @@ enum eModelType {
     Glider = 2,
     Multi  = 3
 };
+enum class eTrimMode {
+    INVALID = 0,
+    Normal, ATLRev, ATLNorm, Center
+};
 
 typedef size_t hwControlIdx_t;
 constexpr std::array<const char*, 32> hwCtrlDesc = { 
@@ -46,17 +50,14 @@ std::array<bool, 2>     reversedDG;
 std::array<uint8_t, chMax> travelLo, travelHi, limitLo, limitHi;
 std::array<uint8_t, chMax> sSpeed; // [0, 27]
 std::array<int16_t, chMax> sTrim;  // [-240, 240]
-std::array<int16_t, chMax> trimRate;
+std::array<hwControlIdx_t, chMax> trim;
+std::array<int16_t, chMax>   trimRate;
+std::array<eTrimMode, chMax> trimMode;
 
 size_t numConditions = 1; // 1 for condition-less models, or set in getConditions()
 struct ConditionDependentParams {
-    ConditionDependentParams() {
-        control.fill(NO_CONTROL_IDX);
-        trim.   fill(NO_CONTROL_IDX);
-    }
-//data:
+    ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
     std::array<hwControlIdx_t, chMax> control;
-    std::array<hwControlIdx_t, chMax> trim;
 };
 std::vector<ConditionDependentParams> m_conditionalData; // .size() == numConditions
 
@@ -468,6 +469,8 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
     const size_t addr18fnTRt = 182, addr18fnTSg = 519;
     const size_t addr14fnTRt = 246, addr14fnTSg = 258;
     const size_t addr18dgCtrl = 450, addr14dgCtrl = 322, addr14dgAlt = 681;
+    const size_t addr14fnTCn = 260, addr14fnTMd = 260, addr14fnTMr = 262;
+    const size_t addr18fnTCn = 214, addr18fnTMd = 218, addr18fnTMr = 222;
 
     assert(numConditions > 0);
     m_conditionalData.resize(numConditions);
@@ -487,7 +490,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
                 cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
                 a1 = axc + functn[i] + functionNumber - 1;
                 a2 = ac + lc * (conditionList[condIdx] - 1) + chMax + data.at(a1);
-                cd.trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
+                trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2)); // <<< DEBUG move out of condIdx loop!
             }
         } else {
             static const std::array<size_t, 3> ag = { addr14fnGrBfly, addr14fnGrCamb, addr14fnGrMot };
@@ -501,13 +504,13 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
                 }
                 cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
                 a2 = addr14fnTrim + data.at(addr14fnXC + functn[i]);
-                cd.trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
+                trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2)); // <<< DEBUG move out of condIdx loop!
             }
         }
     }
 
     // Controls for DGs (same for all conditions)
-    const std::string ls = "                        ";
+    const std::string ls = " ";
     for (size_t ch = 0; ch < 2; ++ch)
     {
         if (isT18SZ)
@@ -555,7 +558,27 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
             atr = addr14fnTRt; ats = addr14fnTSg; x = data.at(addr14fnXC + functn[chIdx]);
         }
         const uint8_t m = 1 << (x % 8);
-        trimRate[chIdx] = ((data.at(ats + x / 8) & m)? -1 : 1) * data.at(atr + x);
+        trimRate[chIdx] = ((data.at(ats + x/8) & m)? -1 : 1)*static_cast<int8_t>(data.at(atr + x));
+    }
+
+    // Trim mode
+    for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+        size_t atc, atm, atr, x;
+        if (isT18SZ) {
+            atc = addr18fnTCn; atm = addr18fnTMd; atr = addr18fnTMr; x = functn[chIdx];
+        } else {
+            atc = addr14fnTCn; atm = addr14fnTMd; atr = addr14fnTMr; x = data.at(addr14fnXC + functn[chIdx]);
+        }
+        const uint8_t m = 1 << (x % 8);
+        if ((data.at(atc + x/8) & m) == 0 && (data.at(atm + x/8) & m) == 0) {
+            trimMode[chIdx] = eTrimMode::Normal;
+        } else {
+            if (data.at(atm + x/8) & m) {
+                trimMode[chIdx] = (data.at(atr + x/8) & m)? eTrimMode::ATLRev : eTrimMode::ATLNorm;
+            } else {
+                trimMode[chIdx] = eTrimMode::Center;
+            }
+        }
     }
 }
 
@@ -566,8 +589,8 @@ int main()
     for (const char* fname : { 
                                //"data\\KatanaMX",  "data\\3DHKatana",
                                //"data\\ShurikBipe",
-                               //"data\\FASSTest-2",    
-                               "data\\COND_SA"//,"data\\COND_SA2"
+                               //"data\\FASSTest-2", "data\\COND_SA"//,   
+                               "data\\COND_SA2"
                              })
     {
         const bool loaded = LoadFromFile(fname, data);
@@ -631,14 +654,17 @@ int main()
                 if (numConditions > 1) {
                     std::wcout << L"    Condition #"<< condIdx+1 <<L": "<< conditionName[condIdx] << std::endl;
                 }
+                std::cout << "\t # Function  Ctrl Trim Rate  Mode" << std::endl;
                 const auto& cd = m_conditionalData[condIdx];
                 for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
                     std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
-                        << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[cd.trim[chIdx]] 
-                        << "  "<< std::showpos << trimRate[chIdx] <<"%" << std::endl;
+                        << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[trim[chIdx]] 
+                        << "  "<< std::showpos << trimRate[chIdx] <<"%  "
+                        << std::array<std::string, 5>{{"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<std::underlying_type<eTrimMode>::type>(trimMode[chIdx]) % 5] 
+                        << std::endl;
                 }
                 for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
-                    std::cout << "\t" << std::setw(2) << chIdx+13 << " DG"<< chIdx <<"       : "<< digiCtrl[chIdx] << std::endl;
+                    std::cout << "\t" << std::setw(2) << chIdx+13 << " DG"<< chIdx <<"       :"<< digiCtrl[chIdx] << std::endl;
                 }
             }
 
