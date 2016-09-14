@@ -13,8 +13,11 @@ using namespace std::string_literals;
 constexpr size_t t14Channels = 12, t18Channels = 16;
 constexpr size_t chMax = std::max(t14Channels, t18Channels);
 
-const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
+constexpr size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
+
 const size_t t14Conditions = 5,  t18Conditions = 8;
+constexpr size_t maxConds = std::max(t14Conditions, t18Conditions);
+
 const size_t functionNumber = 33;
 
 enum eTxType {
@@ -57,7 +60,9 @@ std::array<eTrimMode, chMax> trimMode;
 size_t numConditions = 1; // 1 for condition-less models, or set in getConditions()
 struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
+
     std::array<hwControlIdx_t, chMax> control;
+    std::string conditionControl; 
 };
 std::vector<ConditionDependentParams> m_conditionalData; // .size() == numConditions
 
@@ -243,7 +248,7 @@ void getFunction(const std::vector<uint8_t>& data, eTxType txType, eModelType mo
 
 void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType modelType)
 {
-    const size_t addr14CondSelect = 464/*451*/, addr18CondSelect = 64;
+    const size_t addr14CondSelect = /*464*/451, addr18CondSelect = 64;
     const size_t addr14CondName = 1700, addr18CondName = 28140;
     const size_t addr14CondNameOffset = 9, addr18CondNameOffset = 578;
 
@@ -252,7 +257,7 @@ void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType 
     }
     numConditions = 1;
     conditionState[0] = 128 + 15; 
-    conditionList [0] = 1;
+    conditionList [0] = 0;
 
     // Get names of the conditions
     const size_t numTxConditions = (txType == T18SZ)? t18Conditions : t14Conditions;
@@ -308,13 +313,13 @@ void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType 
             const uint8_t m = v & 0x0F;
             if (v > 127) {
                 conditionState[m] = 128 + i;
-                conditionHw   [m] = addr + (i - 1)*4 + 1; // <<< DEBUG "+1"?
+                conditionHw   [m] = addr + (i - 1)*4 + 1;
             }
         }
         conditionState[0] = 128 + 15;
         for (size_t i = 1; i < t18Conditions;  ++i) {
             if (conditionState[i] > 128) {
-                cp[conditionState[i] - 128] = i;
+                cp[conditionState[i] - 128 -1] = i;
             }
         }
 
@@ -324,6 +329,83 @@ void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType 
                 j = j + 1;
             }
             if (i == 0) break;
+        }
+    }
+}
+ 
+HwNamnes getHardware(const std::vector<uint8_t>& data, size_t a)
+{
+    HwNamnes hw;
+    const uint8_t hC0 = data.at(a);
+    const uint8_t i1 = data.at(a + 1);
+    const uint8_t i2 = data.at(a + 2);
+    if (hC0 == 0xFF) {
+        hw.Type = -1; hw.Ctrl = "--";
+        hw.Pos = (i1 != 0 || i2 != 0)? "OFF" : "ON";
+        return hw;
+    }
+    const uint8_t hR = hC0 & 0x40;
+    const uint8_t hC = hC0 & 0x3F;
+    if (hC >= 32) { hw.Ctrl = "Logic"; return hw; }
+    hw.Ctrl = hwCtrlDesc[hC];
+    if ((hC & 0x34) == 4) {
+        if ((hC & 0x37) == 7) {
+            hw.Type = 2; // 2-position switch
+            hw.Pos = (hR == 0)? "OFF/ON" : "ON/OFF";
+            return hw;
+        }
+        hw.Type = 3; // 3 - position switch
+        if (hR != 0)                          { hw.Pos = "ON/OFF/ON";  return hw; }
+        if ((i1 & 0x80) == 0 && i2 >= 0x40)   { hw.Pos = "OFF/OFF/ON"; return hw; }
+        if ((i1 & 0x80) != 0 && i2 >= 0x40)   { hw.Pos = "ON/OFF/OFF"; return hw; } // was "OFF/ON/ON"
+        if ((i1 <= 0xC0) && (i2 & 0x80) == 0) { hw.Pos = "ON/ON/OFF";  return hw; }
+        if ((i1 <= 0xC0) && (i2 & 0x80) != 0) { hw.Pos = "OFF/ON/ON";  return hw; } // was "ON/OFF/OFF"
+        else                                  { hw.Pos = "OFF/ON/OFF"; return hw; }
+    }
+    hw.Type = 0; // Analog input
+    hw.Rev = (hR == 0)? "Normal" : "Reverse";
+    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { hw.Sym = "Symmetry"; hw.Pos = std::to_string(round(static_cast<int8_t>(i2)*100.0 / 64)); return hw; }
+    if (i1 - i2 == 1)                             { hw.Sym = "Linear";   hw.Pos = std::to_string(round(static_cast<int8_t>(i1)*100.0 / 64)); return hw; }
+    hw.Pos = "Error!!!"; hw.Rev = ""; hw.Sym = "";
+    return hw;
+}
+
+
+void conditionSelect(const std::vector<uint8_t>& data, eTxType txType)
+{
+    auto logicSwitch = [&data, txType](size_t a) -> std::string {
+        const size_t addr14logSw = 328, addr18logSw = 456;
+        const size_t aa = (txType == T18SZ)? addr18logSw : addr14logSw;
+        if ((data.at(a) & 48) == 48) 
+        {
+            auto hw = getHardware(data, aa + (data.at(a) & 7) * 6);
+            std::string alt = hw.Ctrl +" "+ hw.Pos +" "+ hw.Rev +" "+ hw.Sym;
+            if (data.at(a + 1) & 128) {
+                alt = alt + " Alternate";
+            }
+            std::string l;
+            switch (data.at(a + 1) % 4) {
+            case 0: l = "AND";     break;
+            case 1: l = "OR";      break;
+            case 2: l = "EX-OR";   break;
+            case 3: l = "!UNDEF!"; break;
+            }
+            alt = alt + "  " + l + "  ";
+            hw = getHardware(data, aa + (data.at(a) & 7) * 6 + 3);
+            alt = alt + hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
+            if (data.at(a + 1) & 0x40) {
+                alt = alt + " Alternate";
+            }
+            return alt;
+        } else {
+            auto hw = getHardware(data, a);
+            return hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
+        }
+    };
+
+    for (size_t i = 1; i < numConditions; ++i) {
+        if (conditionList[i] != 0) {
+            m_conditionalData[i].conditionControl = logicSwitch(conditionHw[conditionList[i]]);
         }
     }
 }
@@ -424,43 +506,6 @@ void getSubTrim(const std::vector<uint8_t>& data, eTxType txType)
     }
 }
 
-HwNamnes getHardware(const std::vector<uint8_t>& data, size_t a)
-{
-    HwNamnes hw;
-    const uint8_t hC0 = data.at(a);
-    const uint8_t i1 = data.at(a + 1);
-    const uint8_t i2 = data.at(a + 2);
-    if (hC0 == 0xFF) {
-        hw.Type = -1; hw.Ctrl = "--";
-        hw.Pos = (i1 != 0 || i2 != 0)? "OFF" : "ON";
-        return hw;
-    }
-    const uint8_t hR = hC0 & 0x40;
-    const uint8_t hC = hC0 & 0x3F;
-    if (hC >= 32) { hw.Ctrl = "Logic"; return hw; }
-    hw.Ctrl = hwCtrlDesc[hC];
-    if ((hC & 0x34) == 4) {
-        if ((hC & 0x37) == 7) {
-            hw.Type = 2; // 2-position switch
-            hw.Pos = (hR == 0)? "OFF/ON" : "ON/OFF";
-            return hw;
-        }
-        hw.Type = 3; // 3 - position switch
-        if (hR != 0)                          { hw.Pos = "ON/OFF/ON";  return hw; }
-        if ((i1 & 0x80) == 0 && i2 >= 0x40)   { hw.Pos = "OFF/OFF/ON"; return hw; }
-        if ((i1 & 0x80) != 0 && i2 >= 0x40)   { hw.Pos = "OFF/ON/ON";  return hw; }
-        if ((i1 >= 0xC0) && (i2 & 0x80) == 0) { hw.Pos = "ON/ON/OFF";  return hw; }
-        if ((i1 >= 0xC0) && (i2 & 0x80) != 0) { hw.Pos = "ON/OFF/OFF"; return hw; }
-        else                                  { hw.Pos = "OFF/ON/OFF"; return hw; }
-    }
-    hw.Type = 0; // Analog input
-    hw.Rev = (hR == 0)? "Normal" : "Reverse";
-    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { hw.Sym = "Symmetry"; hw.Pos = std::to_string(round(static_cast<int8_t>(i2)*100.0 / 64)); return hw; }
-    if (i1 - i2 == 1)                             { hw.Sym = "Linear";   hw.Pos = std::to_string(round(static_cast<int8_t>(i1)*100.0 / 64)); return hw; }
-    hw.Pos = "Error!!!"; hw.Rev = ""; hw.Sym = "";
-    return hw;
-}
-
 void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eModelType modelType)
 {
     const size_t addr18CondStart = 640, t18CondLength = 3056, addr18fnXC = 118;
@@ -486,10 +531,10 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
             const size_t  ac = addr18CondStart, lc = t18CondLength, axc = addr18fnXC;
             for (size_t i = 0; i < t18Channels; ++i) {
                 size_t a1 = axc + functn[i];
-                size_t a2 = ac + lc * (conditionList[condIdx] - 1) + data.at(a1);
+                size_t a2 = ac + lc * (conditionList[condIdx]) + data.at(a1);
                 cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
                 a1 = axc + functn[i] + functionNumber - 1;
-                a2 = ac + lc * (conditionList[condIdx] - 1) + chMax + data.at(a1);
+                a2 = ac + lc * (conditionList[condIdx]) + chMax + data.at(a1);
                 trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2)); // <<< DEBUG move out of condIdx loop!
             }
         } else {
@@ -499,7 +544,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
                 if (functn[i] >= 22 && functn[i] <= 24 && modelType == Glider) {
                     const size_t a1 = ag[functn[i]-22];
                     if (data.at(a1) > 127) {
-                        a2 = a1 + conditionList[condIdx];
+                        a2 = a1 + conditionList[condIdx] + 1;
                     }
                 }
                 cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
@@ -588,7 +633,7 @@ int main()
     std::vector<uint8_t> data;
     for (const char* fname : { 
                                //"data\\KatanaMX",  "data\\3DHKatana",
-                               //"data\\ShurikBipe",
+                               "data\\ShurikBipe",
                                //"data\\FASSTest-2", "data\\COND_SA"//,   
                                "data\\COND_SA2"
                              })
@@ -636,18 +681,16 @@ int main()
             }
 
             getConditions(data, txType, modelType);
+            getControlAssignment(data, txType, modelType);
+            conditionSelect(data, txType);
             if (txType == T18SZ || modelType == Heli || modelType == Glider) {
                 std::cout << "Condition #" << std::endl;
                 for (size_t condIdx = 0; condIdx < numConditions; ++condIdx) {
-                    std::wcout << L"\t" << condIdx + 1 << L": " << conditionName[condIdx]
-                        //<< L", state: " << conditionState[condIdx]
-                        //<< L", list: " << conditionList[condIdx]
-                        << std::endl;
-                    ;
+                    std::wcout << L"\t" << condIdx + 1 << L": " << conditionName[condIdx];
+                    std::cout  << "  " << m_conditionalData[condIdx].conditionControl << std::endl;
                 }
             }
             
-            getControlAssignment(data, txType, modelType);
             std::cout << "Function" << std::endl;
             for (size_t condIdx = 0; condIdx < numConditions; ++condIdx)
             {
