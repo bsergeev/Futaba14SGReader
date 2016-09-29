@@ -45,14 +45,18 @@ constexpr std::array<const char*, 32> hwCtrlDesc = {
     "T1", "T2", "T4", "T3", "T5", "T6", "T7", "1B", "1C", "1D", "1E", "--" };
 constexpr hwControlIdx_t NO_CONTROL_IDX = hwCtrlDesc.size() - 1; // "--" is last
 
-uint8_t m_wingType = 0;
-uint8_t m_tailType = 0;
+uint8_t  m_wingType = 0;
+uint8_t  m_tailType = 0;
+uint16_t m_FSMode   = 0;
+uint16_t m_FSBattery= 0;
+std::string m_releaseBfsHW;
 
 std::array<bool, chMax> reversed;
 std::array<bool, 2>     reversedDG;
 std::array<uint8_t, chMax> travelLo, travelHi, limitLo, limitHi;
 std::array<uint8_t, chMax> sSpeed; // [0, 27]
 std::array<int16_t, chMax> sTrim;  // [-240, 240]
+std::array<int16_t, chMax> fsPosition;
 std::array<hwControlIdx_t, chMax> trim;
 std::array<int16_t, chMax>   trimRate;
 std::array<eTrimMode, chMax> trimMode;
@@ -432,7 +436,7 @@ void getServoRevers(const std::vector<uint8_t>& data, eTxType txType)
     reversedDG[1] = (revDg & 0x80) != 0;
 }
 
-void endEndPoints(const std::vector<uint8_t>& data, eTxType txType)
+void getEndPoints(const std::vector<uint8_t>& data, eTxType txType)
 {
     travelLo.fill(0); travelHi.fill(0);
     limitLo. fill(0); limitHi. fill(0);
@@ -627,6 +631,34 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
     }
 }
 
+void getFailSafe(const std::vector<uint8_t>& data, eTxType txType)
+{
+    const size_t addr14fsLo    = 269, addr14fsHi    = 697, addr18fsLo = 334, addr18fsHi = 335;
+    const size_t addr14bfsLo   = 286, addr14bfsHi   = 164, addr18bfsLo = 360, addr18bfsHi = 361;
+    const size_t addr14fsPosLo = 270, addr14fsPosHi = 698, addr18fsPosLo = 336, addr18fsPosHi = 578;
+    const size_t addr14relBFS  = 287, addr18relBFS  = 362;
+
+    const bool isT18SZ = (txType == T18SZ);
+    m_FSMode    = (data.at((isT18SZ)? addr18fsHi  : addr14fsHi)  << 8) + data.at((isT18SZ)? addr18fsLo : addr14fsLo);
+    m_FSBattery = (data.at((isT18SZ)? addr18bfsHi : addr14bfsHi) << 8) + data.at((isT18SZ)? addr18bfsLo : addr14bfsLo);
+
+    size_t al, ah, ln;
+    if (isT18SZ) { 
+        al = addr18fsPosLo; ah = addr18fsPosHi; ln = t18ChannelsLow; 
+    } else {
+        al = addr14fsPosLo; ah = addr14fsPosHi; ln = t14ChannelsLow;
+    }
+    const size_t numChannels = (txType == T18SZ)? t18Channels : t14Channels;
+    for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+        const size_t addr = (chIdx < ln)? al + chIdx*2
+                                        : ah + (chIdx - ln)*2;
+        const int16_t st = (data.at(addr) << 8) + data.at(addr + 1);
+        fsPosition[chIdx] = static_cast<int16_t>(round((st - 1024)/6.73));
+    }
+
+    auto hw = getHardware(data, (isT18SZ)? addr18relBFS : addr14relBFS);
+    m_releaseBfsHW = hw.Ctrl + "    " + hw.Pos + "    " + hw.Rev + "    " + hw.Sym;
+}
 
 int main()
 {
@@ -659,7 +691,7 @@ int main()
 
             getFunction   (data, txType, modelType);
             getServoRevers(data, txType);
-            endEndPoints  (data, txType);
+            getEndPoints  (data, txType);
             std::cout << "Reverse & End Point" << std::endl;
             const size_t numChannels = (txType == T18SZ)? t18Channels : t14Channels;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
@@ -679,6 +711,20 @@ int main()
                 std::cout << "\t" << std::setw(2) << chIdx + 1 <<" "<< std::setw(10) << std::left << fa[functn[chIdx]] << ": "
                     << std::right << std::setw(3) << (int)cServoSpeed(sSpeed[chIdx]) <<"  "<< std::setw(3) << (int)sTrim[chIdx] << std::endl;
             }
+
+            getFailSafe(data, txType);
+            auto cFailSafe  = [](size_t chIdx) { return ((m_FSMode    & (1 << chIdx)) == 0)? "Hold" : "F/S"; };
+            auto cBatteryFS = [](size_t chIdx) { return ((m_FSBattery & (1 << chIdx)) == 0)? "Off" : "B.F/S"; };
+            std::cout << "Fail Safe" << std::endl;
+            for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+                std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
+                    << '\t' << cFailSafe(chIdx) << "\t" << cBatteryFS(chIdx);
+                if ((m_FSMode & (1 << chIdx)) != 0 || (m_FSBattery & (1 << chIdx)) != 0) {
+                    std::cout << '\t' << std::right << std::setw(3) << fsPosition[chIdx] << "%";
+                }
+                std::cout << std::endl;
+            }
+            std::cout << "\tRelease battery F/S: " << m_releaseBfsHW << std::endl;
 
             getConditions(data, txType, modelType);
             getControlAssignment(data, txType, modelType);
