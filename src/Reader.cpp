@@ -4,6 +4,7 @@
 #include <iomanip>  // std::setw
 #include <iostream>
 #include <fstream>  // std::ifstream
+#include <limits>
 #include <math.h>   // round
 #include <string>
 #include <vector>
@@ -79,6 +80,15 @@ std::array<RxInfo, 2> RX;
 size_t numConditions = 1; // 1 for condition-less models, or set in getConditions()
 struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
+
+    bool operator ==(const ConditionDependentParams& o) const {
+        for (size_t i = 0; i < chMax; ++i) {
+            if (!(control[i] == o.control[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
 
     std::array<hwControlIdx_t, chMax> control;
     std::string conditionControl; 
@@ -710,7 +720,7 @@ void getSystemInfo(const std::vector<uint8_t>& data, eTxType txType, size_t sysM
         adl = addr14dlI; ddl = div14dlI; av1 = addr14bfsvRx1; av2 = addr14bfsvRx2; mr = mask14rxQty;
     }
     m_sysTelemAct = (data.at(ata) & mta) != 0;
-    if (txType != T18SZ && (sysModulation & 0x03) != 0) { // i.e. "FASST MULTI" or "FASST MLT2" // <<< DEBUG correct?
+    if (txType != T18SZ) { // && (sysModulation & 0x03) != 0) { // i.e. "FASST MULTI" or "FASST MLT2" // <<< DEBUG correct?
         m_Area = ((data.at(aa) & 0x80) == 0)? eAreaType::General : eAreaType::France;
     }
     if (telemType[sysModulation] != 0) {
@@ -733,7 +743,7 @@ int main()
     std::vector<uint8_t> data;
     for (const char* fname : { 
                                //"data\\KatanaMX",  "data\\3DHKatana",
-                               "data\\ShurikBipe",
+                               //"data\\ShurikBipe",
                                //"data\\FASSTest-2", "data\\COND_SA"//,   
                                "data\\COND_SA2"
                              })
@@ -759,7 +769,7 @@ int main()
             std::cout << "SYSTEM" << std::endl;
             std::cout << "\t" << modulationList[modulation] << "  "
                 << ((m_singleRX)? "SINGLE" : "DUAL") << " "
-                << ((m_Area == eAreaType::UNKNOWN)? "" : std::array<const char*,2>{"G", "F"}[(int)m_Area-(int)eAreaType::UNKNOWN])
+                << ((m_Area == eAreaType::UNKNOWN)? "" : std::array<const char*,2>{"G", "F"}[(int)m_Area-(int)eAreaType::UNKNOWN-1])
                 << std::endl;
             std::cout << "\t" << RX[0].ID;
             if (!m_singleRX) { std::cout << "\t\t" << RX[1].ID; }
@@ -826,17 +836,33 @@ int main()
                 if (numConditions > 1) {
                     std::wcout << L"    Condition #"<< condIdx+1 <<L": "<< conditionName[condIdx] << std::endl;
                 }
-                std::cout << "\t # Function  Ctrl Trim Rate  Mode" << std::endl;
+                
                 const auto& cd = m_conditionalData[condIdx];
-                for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-                    std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
-                        << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[trim[chIdx]] 
-                        << "  "<< std::showpos << trimRate[chIdx] <<"%  "
-                        << std::array<std::string, 5>{{"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<std::underlying_type<eTrimMode>::type>(trimMode[chIdx]) % 5] 
-                        << std::endl;
+                
+                const size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
+                size_t sameAsCondition = INVALID_INDEX;
+                if (condIdx > 0) {
+                    for (size_t prevCondIdx = 0; prevCondIdx < condIdx; ++prevCondIdx) {
+                        if (m_conditionalData[prevCondIdx] == cd) {
+                            sameAsCondition = prevCondIdx;
+                            break;
+                        }
+                    }
                 }
-                for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
-                    std::cout << "\t" << std::setw(2) << chIdx+13 << " DG"<< chIdx <<"       :"<< digiCtrl[chIdx] << std::endl;
+                if (sameAsCondition != INVALID_INDEX) {
+                    std::wcout << L"\tSame as condition #"<< sameAsCondition+1 <<L" "<< conditionName[sameAsCondition]  << std::endl;
+                } else {
+                    std::cout << "\t # Function  Ctrl Trim Rate  Mode" << std::endl;
+                    for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+                        std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
+                            << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[trim[chIdx]] 
+                            << "  "<< std::showpos << trimRate[chIdx] <<"%  "
+                            << std::array<std::string, 5>{{"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<std::underlying_type<eTrimMode>::type>(trimMode[chIdx]) % 5] 
+                            << std::endl;
+                    }
+                    for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
+                        std::cout << "\t" << std::setw(2) << chIdx+13 << " DG"<< chIdx <<"       :"<< digiCtrl[chIdx] << std::endl;
+                    }
                 }
             }
 
