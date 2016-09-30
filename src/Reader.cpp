@@ -26,6 +26,11 @@ enum eTxType {
     T14SG = 1,
     T18SZ = 2
 };
+enum class eAreaType {
+    UNKNOWN,
+    General,
+    France
+};
 enum eModelType {
     INVALID_MODEL = -1,
     Plane  = 0,
@@ -50,6 +55,10 @@ uint8_t  m_tailType = 0;
 uint16_t m_FSMode   = 0;
 uint16_t m_FSBattery= 0;
 std::string m_releaseBfsHW;
+bool m_sysTelemAct = false;
+bool m_singleRX  = true;
+eAreaType m_Area = eAreaType::UNKNOWN;
+double m_telemDlInterval = 0.0;
 
 std::array<bool, chMax> reversed;
 std::array<bool, 2>     reversedDG;
@@ -60,6 +69,12 @@ std::array<int16_t, chMax> fsPosition;
 std::array<hwControlIdx_t, chMax> trim;
 std::array<int16_t, chMax>   trimRate;
 std::array<eTrimMode, chMax> trimMode;
+
+struct RxInfo {
+    uint32_t ID = 0; // invalid
+    double   BatteryFsV = 0.0;
+};
+std::array<RxInfo, 2> RX;
 
 size_t numConditions = 1; // 1 for condition-less models, or set in getConditions()
 struct ConditionDependentParams {
@@ -99,7 +114,9 @@ FunctionNames_t functionListMulti = {
     "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s, 
     "Auxiliary2"s, "Auxiliary1"s, "--"s };
 
-
+static const std::array<uint8_t, 16> telemType = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0 };
+static const std::array<double, 16> tfhssVoltList = { 3.8, 0.0, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0,
+                                                      5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.1, 7.4 };
 
 // & -> Long
 // % -> Integer
@@ -657,8 +674,59 @@ void getFailSafe(const std::vector<uint8_t>& data, eTxType txType)
     }
 
     auto hw = getHardware(data, (isT18SZ)? addr18relBFS : addr14relBFS);
-    m_releaseBfsHW = hw.Ctrl + "    " + hw.Pos + "    " + hw.Rev + "    " + hw.Sym;
+    m_releaseBfsHW = hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
 }
+
+void getSystemInfo(const std::vector<uint8_t>& data, eTxType txType, size_t sysModulation)
+{
+    auto getRxID = [&data](size_t a) { return (data.at(a) << 24) | (data.at(a + 1) << 16) | (data.at(a + 2) << 8) | data.at(a + 3); };
+
+    auto getBFsVoltage = [&data](size_t sysModulation, size_t a) {
+        const size_t tlmType = telemType[sysModulation % telemType.size()];
+        const double v = (tlmType == 1)? data.at(a) / 10.0
+                       : (tlmType == 2)? tfhssVoltList[data.at(a) % tfhssVoltList.size()]
+                       : 0.0;
+        return v;
+    };
+
+    constexpr size_t rxIDlen = 4;
+    const size_t addr14IDRx1 = 2196, addr14IDRx2 = addr14IDRx1 + rxIDlen;
+    const size_t addr18IDRx1 = 406,  addr18IDRx2 = addr18IDRx1 + rxIDlen;
+    const size_t addr14sysAr = 156, addr14rxQty = 2204, mask14rxQty = 1;
+    const size_t addr18sysAr = 0,   addr18rxQty = 516,  mask18rxQty = 2;
+    const size_t addr14tAct = 2206, mask14tAct = 128;
+    const size_t addr18tAct = 92,   mask18tAct = 2;
+    const size_t addr14dlI = 2206, div14dlI = 1;
+    const size_t addr18dlI = 516, div18dlI = 4;
+    const size_t addr14bfsvRx1 = 2208, addr14bfsvRx2 = 2209;
+    const size_t addr18bfsvRx1 = 401, addr18bfsvRx2 = 402;
+
+    size_t aa, ar, ai1, ai2, ata, mta, adl, ddl, av1, av2, mr;
+    if (txType == T18SZ) {
+        aa = addr18sysAr; ar = addr18rxQty; ai1 = addr18IDRx1; ai2 = addr18IDRx2; ata = addr18tAct; mta = mask18tAct;
+        adl = addr18dlI; ddl = div18dlI; av1 = addr18bfsvRx1; av2 = addr18bfsvRx2; mr = mask18rxQty;
+    } else {
+        aa = addr14sysAr; ar = addr14rxQty; ai1 = addr14IDRx1; ai2 = addr14IDRx2; ata = addr14tAct; mta = mask14tAct;
+        adl = addr14dlI; ddl = div14dlI; av1 = addr14bfsvRx1; av2 = addr14bfsvRx2; mr = mask14rxQty;
+    }
+    m_sysTelemAct = (data.at(ata) & mta) != 0;
+    if (txType != T18SZ && (sysModulation & 0x03) != 0) { // i.e. "FASST MULTI" or "FASST MLT2" // <<< DEBUG correct?
+        m_Area = ((data.at(aa) & 0x80) == 0)? eAreaType::General : eAreaType::France;
+    }
+    if (telemType[sysModulation] != 0) {
+        m_singleRX = (data.at(ar) & mr) == 0 || sysModulation == 10; // "FASSTest 12CH" // <<< DEBUG correct?
+        RX[0].ID = getRxID(ai1);
+        RX[0].BatteryFsV = getBFsVoltage(sysModulation, av1);
+        if (!m_singleRX) {
+            RX[1].ID = getRxID(ai2);
+            RX[1].BatteryFsV = getBFsVoltage(sysModulation, av2);
+        }
+    }
+    if (telemType[sysModulation] == 1) {
+        m_telemDlInterval = ((data.at(adl) / ddl) & 0x1F) / 10.0;
+    }
+}
+
 
 int main()
 {
@@ -680,14 +748,28 @@ int main()
             std::wcout << L"Model name: \"" << txName << L"\"" << std::endl;
 
             const eModelType modelType = getModelType(data, txType);
-            std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" : std::array<char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << std::endl;
+            std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" : std::array<char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << "\n\n";
 
             const size_t modulation = getModulation(data, txType);
+            getSystemInfo(data, txType, modulation);
             const char* modulationList[16] = {"FASST 7CH",     "FASST MULTI", "FASST MLT2",    "--",
                                               "S-FHSS",        "--",          "--",            "--",
                                               "FASSTest 14CH", "--",          "FASSTest 12CH", "--",
                                               "T-FHSS",        "--",          "--",            "--" };
-            std::cout << "Modulation: " << modulationList[modulation] << std::endl;
+            std::cout << "SYSTEM" << std::endl;
+            std::cout << "\t" << modulationList[modulation] << "  "
+                << ((m_singleRX)? "SINGLE" : "DUAL") << " "
+                << ((m_Area == eAreaType::UNKNOWN)? "" : std::array<const char*,2>{"G", "F"}[(int)m_Area-(int)eAreaType::UNKNOWN])
+                << std::endl;
+            std::cout << "\t" << RX[0].ID;
+            if (!m_singleRX) { std::cout << "\t\t" << RX[1].ID; }
+            std::cout << std::endl;
+            std::cout << "\t" << std::setprecision(2) << RX[0].BatteryFsV <<"V";
+            if (!m_singleRX) { std::cout << "\t\t" << std::setprecision(2) << RX[1].BatteryFsV << "V"; }
+            std::cout << std::endl;
+            std::cout << "\tTELEMETRY: " << ((m_sysTelemAct)? "ACT":"INH")
+                << " DL " << std::setprecision(2) << m_telemDlInterval <<"s"<< std::endl;
+
 
             getFunction   (data, txType, modelType);
             getServoRevers(data, txType);
@@ -713,14 +795,15 @@ int main()
             }
 
             getFailSafe(data, txType);
-            auto cFailSafe  = [](size_t chIdx) { return ((m_FSMode    & (1 << chIdx)) == 0)? "Hold" : "F/S"; };
-            auto cBatteryFS = [](size_t chIdx) { return ((m_FSBattery & (1 << chIdx)) == 0)? "Off" : "B.F/S"; };
+            auto cFailSafe  = [](size_t chIdx) { return ((m_FSMode    & (1 << chIdx)) == 0)? "HOLD" : "F/S"; };
+            auto cBatteryFS = [](size_t chIdx) { return ((m_FSBattery & (1 << chIdx)) == 0)? "OFF"  : "ON"; };
             std::cout << "Fail Safe" << std::endl;
+            std::cout << "\t\t\tF/S\tB.F/S\tPOS" << std::endl;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
                 std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
                     << '\t' << cFailSafe(chIdx) << "\t" << cBatteryFS(chIdx);
                 if ((m_FSMode & (1 << chIdx)) != 0 || (m_FSBattery & (1 << chIdx)) != 0) {
-                    std::cout << '\t' << std::right << std::setw(3) << fsPosition[chIdx] << "%";
+                    std::cout << '\t' << std::right << std::setw(4) << fsPosition[chIdx] << "%";
                 }
                 std::cout << std::endl;
             }
