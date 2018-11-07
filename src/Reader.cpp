@@ -270,6 +270,7 @@ void getFunction(const std::vector<uint8_t>& data, eTxType txType, eModelType mo
       case Glider: fa = functionListAir;   break;
       case Heli:   fa = functionListHeli;  break;
       case Multi:  fa = functionListMulti; break;
+      case INVALID_MODEL: assert(!"Invalid model type"); break;
     }
     if (txType != T18SZ && modelType == Plane) {
         fa[25] = "VPP"s;
@@ -302,6 +303,8 @@ void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType 
             conditionName[3] = L"DISTANCE"; conditionName[4] = L"LANDING";
             numConditions = 5;
             break;
+        case INVALID_MODEL: assert(!"Invalid model type"); break;
+        default: break; // do nothing
         }
     }
     else // T18SZ or T14SZ
@@ -749,13 +752,13 @@ int main()
         if (loaded && !data.empty())
         {
             const eTxType txType = getTxType(data);
-            std::cout << "TX: " << ((txType == INVALID_TX)? "INVALID" : std::array<char*, 3>{"T8FG", "T14SG", "T18SZ"}[txType]) << std::endl;
+            std::cout << "TX: " << ((txType == INVALID_TX)? "INVALID" : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[txType]) << std::endl;
 
             const std::wstring txName = getModelName(data, txType);
             std::wcout << L"Model name: \"" << txName << L"\"" << std::endl;
 
             const eModelType modelType = getModelType(data, txType);
-            std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" : std::array<char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << "\n\n";
+            std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << "\n\n";
 
             const size_t modulation = getModulation(data, txType);
             getSystemInfo(data, txType, modulation);
