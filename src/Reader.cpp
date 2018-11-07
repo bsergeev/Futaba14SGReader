@@ -98,7 +98,6 @@ std::vector<ConditionDependentParams> m_conditionalData; // .size() == numCondit
 std::array<uint8_t, chMax> functn; // value is the index of FunctionNames_t, i.e. < 33
 
 typedef std::array<std::string, functionNumber> FunctionNames_t;
-FunctionNames_t& fa = FunctionNames_t{};
 FunctionNames_t functionListAir = {
     "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s, 
     "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s, 
@@ -123,6 +122,7 @@ FunctionNames_t functionListMulti = {
     "Mode"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s, 
     "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s, 
     "Auxiliary2"s, "Auxiliary1"s, "--"s };
+FunctionNames_t& fa = functionListAir;
 
 static const std::array<uint8_t, 16> telemType = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0 };
 static const std::array<double, 16> tfhssVoltList = { 3.8, 0.0, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0,
@@ -742,7 +742,7 @@ int main()
 {
     std::vector<uint8_t> data;
     for (const char* fname : { 
-                               "data\\KatanaMX", //, "data\\ShurikBipe"
+                               "data/KatanaMX", //, "data\\ShurikBipe"
                              })
     {
         const bool loaded = LoadFromFile(fname, data);
