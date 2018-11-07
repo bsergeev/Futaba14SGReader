@@ -742,10 +742,7 @@ int main()
 {
     std::vector<uint8_t> data;
     for (const char* fname : { 
-                               //"data\\KatanaMX",  "data\\3DHKatana",
-                               //"data\\ShurikBipe",
-                               //"data\\FASSTest-2", "data\\COND_SA"//,   
-                               "data\\COND_SA2"
+                               "data\\KatanaMX", //, "data\\ShurikBipe"
                              })
     {
         const bool loaded = LoadFromFile(fname, data);

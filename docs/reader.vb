@@ -430,9 +430,13 @@ Public Sub getConditions()
             Next i
         End If  ' (transType = T18SZ) Or (modelType = Heli) Or (modelType = Glider)
     End If  ' transType = T8FG
+
     If (transType <> T18SZ) And ((modelType = Plane) Or (modelType = Multi)) Then Exit Sub
+
+
     For i = 1 To c - 1
-        m = (myArr(ac + (i - 1) * 4) And 15) + 1: If myArr(ac + (i - 1) * 4) > 127 Then conditionState(m) = 128 + i: conditionHw(m) = ac + (i - 1) * 4 + 1
+        m = (myArr(ac + (i - 1) * 4) And 15) + 1
+        If myArr(ac + (i - 1) * 4) > 127 Then conditionState(m) = 128 + i: conditionHw(m) = ac + (i - 1) * 4 + 1
     Next i
     conditionState(1) = 128 + 15
     For i = 2 To t18Conditions
@@ -440,7 +444,10 @@ Public Sub getConditions()
     Next i
     j = 2
     For i = t18Conditions To 1 Step -1
-        If cp(i) Then conditionList(j) = cp(i): j = j + 1
+        If cp(i) Then 
+          conditionList(j) = cp(i)
+          j = j + 1
+        End If
     Next i
 End Sub ' getConditions
 
