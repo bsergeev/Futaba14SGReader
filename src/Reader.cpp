@@ -806,7 +806,7 @@ int main()
 
             getFailSafe(data, txType);
             auto cFailSafe  = [](size_t chIdx) { return ((m_FSMode    & (1 << chIdx)) == 0)? "HOLD" : "F/S"; };
-            auto cBatteryFS = [](size_t chIdx) { return ((m_FSBattery & (1 << chIdx)) == 0)? "OFF"  : "ON"; };
+            auto cBatteryFS = [](size_t chIdx) { return ((m_FSBattery & (1 << chIdx)) == 0)? " OFF" : "ON"; };
             std::cout << "Fail Safe" << std::endl;
             std::cout << "\t\t\tF/S\tB.F/S\tPOS" << std::endl;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
@@ -815,7 +815,7 @@ int main()
                 if ((m_FSMode & (1 << chIdx)) != 0 || (m_FSBattery & (1 << chIdx)) != 0) {
                     std::cout << '\t' << std::right << std::setw(4) << fsPosition[chIdx] << "%";
                 }
-                std::cout << std::endl;
+                std::cout << std::right << std::endl;
             }
             std::cout << "\tRelease battery F/S: " << m_releaseBfsHW << std::endl;
 
