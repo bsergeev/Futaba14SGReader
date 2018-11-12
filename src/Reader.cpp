@@ -7,12 +7,13 @@
 #include <limits>
 #include <math.h>   // round
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace std::string_literals;
 
 constexpr size_t t14Channels = 12, t18Channels = 16;
-constexpr size_t chMax = std::max(t14Channels, t18Channels);
+constexpr size_t MAX_CH = std::max(t14Channels, t18Channels);
 
 constexpr size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
 
@@ -61,15 +62,15 @@ bool m_singleRX  = true;
 eAreaType m_Area = eAreaType::UNKNOWN;
 double m_telemDlInterval = 0.0;
 
-std::array<bool, chMax> reversed;
+std::array<bool, MAX_CH> reversed;
 std::array<bool, 2>     reversedDG;
-std::array<uint8_t, chMax> travelLo, travelHi, limitLo, limitHi;
-std::array<uint8_t, chMax> sSpeed; // [0, 27]
-std::array<int16_t, chMax> sTrim;  // [-240, 240]
-std::array<int16_t, chMax> fsPosition;
-std::array<hwControlIdx_t, chMax> trim;
-std::array<int16_t, chMax>   trimRate;
-std::array<eTrimMode, chMax> trimMode;
+std::array<uint8_t, MAX_CH> travelLo, travelHi, limitLo, limitHi;
+std::array<uint8_t, MAX_CH> sSpeed; // [0, 27]
+std::array<int16_t, MAX_CH> sTrim;  // [-240, 240]
+std::array<int16_t, MAX_CH> fsPosition;
+std::array<hwControlIdx_t, MAX_CH> trim;
+std::array<int16_t, MAX_CH>   trimRate;
+std::array<eTrimMode, MAX_CH> trimMode;
 
 struct RxInfo {
     uint32_t ID = 0; // invalid
@@ -82,7 +83,7 @@ struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
 
     bool operator ==(const ConditionDependentParams& o) const {
-        for (size_t i = 0; i < chMax; ++i) {
+        for (size_t i = 0; i < MAX_CH; ++i) {
             if (!(control[i] == o.control[i])) {
                 return false;
             }
@@ -90,12 +91,12 @@ struct ConditionDependentParams {
         return true;
     }
 
-    std::array<hwControlIdx_t, chMax> control;
+    std::array<hwControlIdx_t, MAX_CH> control;
     std::string conditionControl; 
 };
 std::vector<ConditionDependentParams> m_conditionalData; // .size() == numConditions
 
-std::array<uint8_t, chMax> functn; // value is the index of FunctionNames_t, i.e. < 33
+std::array<uint8_t, MAX_CH> functn; // value is the index of FunctionNames_t, i.e. < 33
 
 typedef std::array<std::string, functionNumber> FunctionNames_t;
 FunctionNames_t functionListAir = {
@@ -144,7 +145,7 @@ struct HwNamnes {
     int8_t Type = -1;
     std::string Ctrl, Pos, Rev, Sym;
 };
-
+//------------------------------------------------------------------------------
 bool LoadFromFile(const std::string& fileName, std::vector<uint8_t>& data)
 {
     bool ok = false;
@@ -169,54 +170,44 @@ bool LoadFromFile(const std::string& fileName, std::vector<uint8_t>& data)
 
 eTxType getTxType(const std::vector<uint8_t>& data)
 {
-    const size_t TX_ID_LENGTH = 8;
-    std::array<char, TX_ID_LENGTH+1>  buffer;
-    buffer.fill('\0');
+    const char* p = reinterpret_cast<const char*>(&data.front());
 
-    for (size_t i = 0; i < TX_ID_LENGTH; ++i) {
-        buffer[i] = static_cast<const char>(data.at(i));
-    }
-    if (std::string{ buffer.data() } == "T18SZ   "s) {
+    constexpr size_t TX_ID_LENGTH = 8;
+    if (std::string_view{ p, TX_ID_LENGTH } == "T18SZ   "s) {
         return T18SZ;
     }
 
-    buffer.fill('\0');
-    for (size_t i = 0; i < TX_ID_LENGTH; ++i) {
-        buffer[i] = static_cast<const char>(data.at(i * 2 + 2));
+    std::array<char, TX_ID_LENGTH>  buffer;
+    for (size_t i=0, j=2;  i < TX_ID_LENGTH;  ++i, j += 2) {
+        buffer[i] = p[j];
     }
-    const std::string txName{ buffer.data() };
-    if (txName == "T8FG    "s) {
+    std::string_view txTypeName{ buffer.data(), TX_ID_LENGTH };
+    if (txTypeName == "T8FG    "s) {
         return T8FG;
-    } else if (txName == "T14SG   "s) {
+    } else if (txTypeName == "T14SG   "s) {
         return T14SG;
     }
-
     return INVALID_TX;
 }
 
 std::wstring getModelName(const std::vector<uint8_t>& data, eTxType txType)
 {
-    const size_t t14mNameStart  = 17, t14mNameLength = 10;
-    const size_t t18mNameStart  = 10, t18mNameLength = 15;
-
-    std::array<wchar_t, t18mNameLength + 1> buffer;
-    buffer.fill(0);
-
     size_t startPos=0, len=0;
     if (txType == T18SZ) {
-        startPos = t18mNameStart; len = t18mNameLength;
+        startPos = 10; len = 15;
     } else {
-        startPos = t14mNameStart; len = t14mNameLength;
+        startPos = 17; len = 10;
     }
-    for (size_t k = 0; k < len; ++k) {
-        const char hi = static_cast<const char>(data.at(startPos + k*2));
-        const char lo = static_cast<const char>(data.at(startPos + k*2 + 1));
-        buffer[k] = static_cast<wchar_t>((hi << 8) + lo);
-        if (buffer[k] == 0) {
+
+    std::array<wchar_t, 15> buffer; // longer len
+    size_t i = 0;
+    for (size_t j = startPos;  i < len;  j += 2) {
+        buffer[i] = static_cast<wchar_t>((data.at(j) << 8) + data.at(j+1));
+        if (buffer[i++] == 0) {
             break;
         }
     }
-    return std::wstring{ buffer.data() };
+    return std::wstring{ buffer.data(), i };
 }
 
 eModelType getModelType(const std::vector<uint8_t>& data, eTxType txType)
@@ -233,10 +224,7 @@ size_t getModulation(const std::vector<uint8_t>& data, eTxType txType)
 {
     size_t sysModulation = 0;
 
-    const size_t addr14sysTyp = 154, div14sysTyp = 1;
-    const size_t addr18sysTyp = 92,  div18sysTyp = 16;
-
-    const size_t am = (txType == T18SZ)? addr18sysTyp : addr14sysTyp;
+    const size_t am = (txType == T18SZ)? 92 : 154;
     if (txType == T8FG) {
         const size_t v = ((data.at(am) & 0x30) + (data.at(am + 1) & 0x80)) >> 4;
         switch (v) {
@@ -245,7 +233,7 @@ size_t getModulation(const std::vector<uint8_t>& data, eTxType txType)
             case 9: sysModulation = 2; break;
         }
     } else {
-        const size_t dm = (txType == T18SZ)? div18sysTyp : div14sysTyp;
+        const size_t dm = (txType == T18SZ)? 16 : 1;
         sysModulation = (data.at(am) / dm) & 0x0F;
     }
 
@@ -568,7 +556,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
                 size_t a2 = ac + lc * (conditionList[condIdx]) + data.at(a1);
                 cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2));
                 a1 = axc + functn[i] + functionNumber - 1;
-                a2 = ac + lc * (conditionList[condIdx]) + chMax + data.at(a1);
+                a2 = ac + lc * (conditionList[condIdx]) + MAX_CH + data.at(a1);
                 trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, data.at(a2)); // <<< DEBUG move out of condIdx loop!
             }
         } else {
@@ -739,26 +727,33 @@ void getSystemInfo(const std::vector<uint8_t>& data, eTxType txType, size_t sysM
         m_telemDlInterval = ((data.at(adl) / ddl) & 0x1F) / 10.0;
     }
 }
-
-
-int main()
+//------------------------------------------------------------------------------
+int main(int argc, char* argv[])
 {
-    std::vector<uint8_t> data;
-    for (const char* fname : { 
-                               "data/KatanaMX", //, "data\\ShurikBipe"
-                             })
+    std::vector<const char*> names{ { "data/KatanaMX" } };
+    if (argc > 1) {
+        names.clear();
+        for (int i = 1; i < argc; ++i) {
+            names.push_back(argv[i]);
+        }
+    }
+
+    for (const char* fname : names)
     {
+        std::vector<uint8_t> data;
         const bool loaded = LoadFromFile(fname, data);
         if (loaded && !data.empty())
         {
             const eTxType txType = getTxType(data);
-            std::cout << "TX: " << ((txType == INVALID_TX)? "INVALID" : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[txType]) << std::endl;
+            std::cout << "TX: " << ((txType == INVALID_TX)? "INVALID" 
+              : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[txType]) << std::endl;
 
-            const std::wstring txName = getModelName(data, txType);
-            std::wcout << L"Model name: \"" << txName << L"\"" << std::endl;
+            const std::wstring modelName = getModelName(data, txType);
+            std::wcout << L"Model name: \"" << modelName << L"\"" << std::endl;
 
             const eModelType modelType = getModelType(data, txType);
-            std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << "\n\n";
+            std::cout << "Model: " << ((modelType == INVALID_MODEL)? "INVALID" 
+              : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[modelType]) << "\n\n";
 
             const size_t modulation = getModulation(data, txType);
             getSystemInfo(data, txType, modulation);
@@ -871,6 +866,5 @@ int main()
         }
         std::cout << "-------------------" << std::endl;
     }
-    return 0;
 }
 
