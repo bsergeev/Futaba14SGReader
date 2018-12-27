@@ -22,6 +22,8 @@ constexpr auto to_ut(ENUM e) -> typename std::underlying_type<ENUM>::type {
    return static_cast<typename std::underlying_type<ENUM>::type>(e);
 } 
 
+const size_t NO_CONTROL_IDX = 31; // for some strange reason, GCC doesn't like this being static const memeber of Model class...
+
 } // anonymous namespace
 //------------------------------------------------------------------------------
 class Model {
@@ -60,8 +62,7 @@ public: // <<< DEBUG
   };
 
   typedef size_t hwControlIdx_t;
-  static const std::array<const char*, 32> hwCtrlDesc;
-  static const hwControlIdx_t NO_CONTROL_IDX = hwCtrlDesc.size() - 1; // "--" is last
+  static const std::array<const char*, NO_CONTROL_IDX+1> hwCtrlDesc;
 
   uint8_t     m_wingType = 0;
   uint8_t     m_tailType = 0;
