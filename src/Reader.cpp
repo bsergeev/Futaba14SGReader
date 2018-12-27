@@ -1,3 +1,5 @@
+// Builds warning free with:
+//  g++ -std=c++17 -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wsign-conversion -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wuseless-cast -Wdouble-promotion -Wformat=2
 #include <array>
 #include <cstdint>
 #include <cassert>
@@ -11,6 +13,15 @@
 #include <vector>
 
 using namespace std::string_literals;
+
+namespace {
+
+template <typename ENUM>
+constexpr auto to_ut(ENUM e) -> typename std::underlying_type<ENUM>::type {
+   return static_cast<typename std::underlying_type<ENUM>::type>(e);
+} 
+
+} // anonymous namespace
 
 constexpr size_t t14Channels = 12, t18Channels = 16;
 constexpr size_t MAX_CH = std::max(t14Channels, t18Channels);
@@ -28,7 +39,7 @@ enum eTxType {
     T14SG = 1,
     T18SZ = 2
 };
-enum class eAreaType {
+enum class eAreaType : uint8_t {
     UNKNOWN,
     General,
     France
@@ -40,7 +51,7 @@ enum eModelType {
     Glider = 2,
     Multi  = 3
 };
-enum class eTrimMode {
+enum class eTrimMode : uint8_t {
     INVALID = 0,
     Normal, ATLRev, ATLNorm, Center
 };
@@ -157,10 +168,12 @@ bool LoadFromFile(const std::string& fileName, std::vector<uint8_t>& data)
         {
             inStream.seekg(0, inStream.end); // get length of file
             const size_t length = static_cast<size_t>(inStream.tellg());
+            assert(length <= std::numeric_limits<std::streamsize>::max());
+
             inStream.seekg(0, inStream.beg);
 
             data.resize(length);
-            inStream.read(reinterpret_cast<char*>(&data[0]), length);
+            inStream.read(reinterpret_cast<char*>(&data[0]), static_cast<std::streamsize>(length));
 
             ok = !inStream.fail();
         }
@@ -226,7 +239,7 @@ size_t getModulation(const std::vector<uint8_t>& data, eTxType txType)
 
     const size_t am = (txType == T18SZ)? 92 : 154;
     if (txType == T8FG) {
-        const size_t v = ((data.at(am) & 0x30) + (data.at(am + 1) & 0x80)) >> 4;
+        auto v = ((data.at(am) & 0x30) + (data.at(am + 1) & 0x80)) >> 4;
         switch (v) {
             case 1: sysModulation = 1; break;
             case 3: sysModulation = 0; break;
@@ -273,7 +286,7 @@ void getConditions(const std::vector<uint8_t>& data, eTxType txType, eModelType 
     const size_t addr14CondNameOffset = 9, addr18CondNameOffset = 578;
 
     for (size_t i = 0; i < t18Conditions; ++i) {
-        conditionName[i] = L""; conditionState[i] = 0; conditionHw[i] = -1 /*hwOff*/; conditionList[i] = 0;
+        conditionName[i] = L""; conditionState[i] = 0; conditionHw[i] = static_cast<size_t>(-1) /*hwOff*/; conditionList[i] = 0;
     }
     numConditions = 1;
     conditionState[0] = 128 + 15; 
@@ -400,7 +413,7 @@ void conditionSelect(const std::vector<uint8_t>& data, eTxType txType)
         const size_t aa = (txType == T18SZ)? addr18logSw : addr14logSw;
         if ((data.at(a) & 48) == 48) 
         {
-            auto hw = getHardware(data, aa + (data.at(a) & 7) * 6);
+            auto hw = getHardware(data, aa + (data.at(a) & 0x07U) * 6U);
             std::string alt = hw.Ctrl +" "+ hw.Pos +" "+ hw.Rev +" "+ hw.Sym;
             if (data.at(a + 1) & 128) {
                 alt = alt + " Alternate";
@@ -413,7 +426,7 @@ void conditionSelect(const std::vector<uint8_t>& data, eTxType txType)
             case 3: l = "!UNDEF!"; break;
             }
             alt = alt + "  " + l + "  ";
-            hw = getHardware(data, aa + (data.at(a) & 7) * 6 + 3);
+            hw = getHardware(data, aa + (data.at(a) & 0x7U) * 6U + 3U);
             alt = alt + hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
             if (data.at(a + 1) & 0x40) {
                 alt = alt + " Alternate";
@@ -485,7 +498,7 @@ uint8_t cServoSpeed(uint8_t y) {
     if (y < 78)  { return static_cast<uint8_t>(round((y - 67)/4) + 7); }
     if (y == 78) { return 10; } // y - 68;
     if (y < 88)  { return static_cast<uint8_t>(round((y - 80)/3) + 11); }
-    return  (y - 74);
+    return  static_cast<uint8_t>((y - 74));
 }
 
 void getServoSpeed(const std::vector<uint8_t>& data, eTxType txType)
@@ -564,7 +577,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
             for (size_t i = 0; i < t14Channels; ++i) {
                 size_t a2 = addr14fnCtrl + data.at(addr14fnXC + functn[i]);
                 if (functn[i] >= 22 && functn[i] <= 24 && modelType == Glider) {
-                    const size_t a1 = ag[functn[i]-22];
+                    const size_t a1 = ag[functn[i]-22U];
                     if (data.at(a1) > 127) {
                         a2 = a1 + conditionList[condIdx] + 1;
                     }
@@ -584,7 +597,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
         {
             if ((data.at(addr18dgCtrl + ch*3) & 48) == 48) 
             {
-                auto hw = getHardware(data, addr18dgCtrl + ((data.at(addr18dgCtrl + ch*3) & 7) + 1) * 6);
+                auto hw = getHardware(data, addr18dgCtrl + ((data.at(addr18dgCtrl + ch*3) & 0x07U) + 1U) * 6U);
                 std::string alt = hw.Ctrl +" "+ hw.Pos +" "+ hw.Rev +" "+ hw.Sym;
                 if (data.at(addr18dgCtrl + ch*3 + 1) & 128) {
                     alt = alt + " Alternate";
@@ -597,7 +610,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
                 case 3: l = "!UNDEF!"; break;
                 }
                 alt = alt + "   " + l + "   ";
-                hw = getHardware(data, addr18dgCtrl + ((data.at(addr18dgCtrl + ch * 3) & 7) + 1) * 6 + 3);
+                hw = getHardware(data, addr18dgCtrl + ((data.at(addr18dgCtrl + ch * 3U) & 0x07U) + 1U) * 6U + 3U);
                 alt = alt + hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
                 if (data.at(addr18dgCtrl + ch*3 + 1) & 0x40) { 
                     alt = alt + " Alternate";
@@ -608,7 +621,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
                 digiCtrl[ch] = ls + hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
             }
         } else { // <<< DEBUG TBD: handle 'Logic' for 14SG
-            const uint8_t m = 1 << ch;
+            const uint8_t m = static_cast<uint8_t>(1U << ch);
             std::string alt = (data.at(addr14dgAlt) & m)? "Alternate" : "";
             auto hw = getHardware(data, addr14dgCtrl + ch * 3);
             digiCtrl[ch] = ls + hw.Ctrl +"  "+ hw.Pos +"  "+ hw.Rev +"  "+ hw.Sym +"  "+ alt;
@@ -624,8 +637,9 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
         } else {
             atr = addr14fnTRt; ats = addr14fnTSg; x = data.at(addr14fnXC + functn[chIdx]);
         }
-        const uint8_t m = 1 << (x % 8);
-        trimRate[chIdx] = ((data.at(ats + x/8) & m)? -1 : 1)*static_cast<int8_t>(data.at(atr + x));
+        const uint8_t m = static_cast<uint8_t>(1U << (x % 8));
+        auto v = static_cast<int16_t>(data.at(atr + x));
+        trimRate[chIdx] = ((data.at(ats + x/8) & m) != 0)? -v : v;
     }
 
     // Trim mode
@@ -636,7 +650,7 @@ void getControlAssignment(const std::vector<uint8_t>& data, eTxType txType, eMod
         } else {
             atc = addr14fnTCn; atm = addr14fnTMd; atr = addr14fnTMr; x = data.at(addr14fnXC + functn[chIdx]);
         }
-        const uint8_t m = 1 << (x % 8);
+        const uint8_t m = static_cast<uint8_t>(1 << (x % 8U));
         if ((data.at(atc + x/8) & m) == 0 && (data.at(atm + x/8) & m) == 0) {
             trimMode[chIdx] = eTrimMode::Normal;
         } else {
@@ -680,10 +694,10 @@ void getFailSafe(const std::vector<uint8_t>& data, eTxType txType)
 
 void getSystemInfo(const std::vector<uint8_t>& data, eTxType txType, size_t sysModulation)
 {
-    auto getRxID = [&data](size_t a) { return (data.at(a) << 24) | (data.at(a + 1) << 16) | (data.at(a + 2) << 8) | data.at(a + 3); };
+    auto getRxID = [&data](size_t a) -> uint32_t { return static_cast<uint32_t>((data.at(a) << 24) | (data.at(a + 1) << 16) | (data.at(a + 2) << 8) | data.at(a + 3)); };
 
-    auto getBFsVoltage = [&data](size_t sysModulation, size_t a) {
-        const size_t tlmType = telemType[sysModulation % telemType.size()];
+    auto getBFsVoltage = [&data](size_t sysModultn, size_t a) {
+        const size_t tlmType = telemType[sysModultn % telemType.size()];
         const double v = (tlmType == 1)? data.at(a) / 10.0
                        : (tlmType == 2)? tfhssVoltList[data.at(a) % tfhssVoltList.size()]
                        : 0.0;
@@ -762,10 +776,8 @@ int main(int argc, char* argv[])
                                               "FASSTest 14CH", "--",          "FASSTest 12CH", "--",
                                               "T-FHSS",        "--",          "--",            "--" };
             std::cout << "SYSTEM" << std::endl;
-            std::cout << "\t" << modulationList[modulation] << "  "
-                << ((m_singleRX)? "SINGLE" : "DUAL") << " "
-                << ((m_Area == eAreaType::UNKNOWN)? "" : std::array<const char*,2>{"G", "F"}[(int)m_Area-(int)eAreaType::UNKNOWN-1])
-                << std::endl;
+            std::cout << "\t" << modulationList[modulation] << "  " << ((m_singleRX)? "SINGLE" : "DUAL") << " "
+                << ((m_Area == eAreaType::UNKNOWN)? "" : (m_Area == eAreaType::General? "G" : "F")) << std::endl;
             std::cout << "\t" << RX[0].ID;
             if (!m_singleRX) { std::cout << "\t\t" << RX[1].ID; }
             std::cout << std::endl;
@@ -784,8 +796,8 @@ int main(int argc, char* argv[])
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
                 std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
                     << ((reversed[chIdx])? "REVERSED" : "normal  ") << "  "
-                    << std::right << std::setw(3) << (int)limitLo[chIdx] << "  " << std::setw(3) << (int)travelLo[chIdx] << "   "
-                    << std::setw(3) << (int)travelHi[chIdx] << "  " << std::setw(3) << (int)limitHi[chIdx] << std::endl;
+                    << std::right << std::setw(3) << static_cast<int>(limitLo[chIdx]) << "  " << std::setw(3) << static_cast<int>(travelLo[chIdx]) << "   "
+                    << std::setw(3) << static_cast<int>(travelHi[chIdx]) << "  " << std::setw(3) << static_cast<int>(limitHi[chIdx]) << std::endl;
             }
             for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
                 std::cout << "\t" << std::setw(2) << chIdx + 13 << " DG"<< chIdx <<"       : "<< ((reversedDG[chIdx])? "REVERSED" : "normal")<< std::endl;
@@ -796,7 +808,7 @@ int main(int argc, char* argv[])
             std::cout << "Servo Speed & SubTrim" << std::endl;
             for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
                 std::cout << "\t" << std::setw(2) << chIdx + 1 <<" "<< std::setw(10) << std::left << fa[functn[chIdx]] << ": "
-                    << std::right << std::setw(3) << (int)cServoSpeed(sSpeed[chIdx]) <<"  "<< std::setw(3) << (int)sTrim[chIdx] << std::endl;
+                    << std::right << std::setw(3) << static_cast<int>(cServoSpeed(sSpeed[chIdx])) <<"  "<< std::setw(3) << static_cast<int>(sTrim[chIdx]) << std::endl;
             }
 
             getFailSafe(data, txType);
@@ -852,7 +864,7 @@ int main(int argc, char* argv[])
                         std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << fa[functn[chIdx]] << ": "
                             << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[trim[chIdx]] 
                             << "  "<< std::showpos << trimRate[chIdx] <<"%  "
-                            << std::array<std::string, 5>{{"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<std::underlying_type<eTrimMode>::type>(trimMode[chIdx]) % 5] 
+                            << std::array<std::string, 5>{{"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<size_t>(to_ut(trimMode[chIdx]) % 5U)] 
                             << std::endl;
                     }
                     for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
