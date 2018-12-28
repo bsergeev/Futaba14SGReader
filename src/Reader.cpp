@@ -22,14 +22,12 @@ constexpr auto to_ut(ENUM e) -> typename std::underlying_type<ENUM>::type {
    return static_cast<typename std::underlying_type<ENUM>::type>(e);
 } 
 
-const size_t NO_CONTROL_IDX = 31; // for some strange reason, GCC doesn't like this being static const memeber of Model class...
-
 } // anonymous namespace
 //------------------------------------------------------------------------------
 class Model {
 public:
   enum class TxType : uint8_t {
-    INVALID_TX = 0xFF, // <<< DEBUG // TODO: rename
+    INVALID = 0xFF,
     T8FG  = 0,
     T14SG = 1,
     T18SZ = 2
@@ -40,7 +38,7 @@ public:
     France
   };
   enum class ModelType : uint8_t {
-    INVALID_MODEL = 0xFF, // TODO: rename
+    INVALID = 0xFF,
     Plane  = 0,
     Heli   = 1,
     Glider = 2,
@@ -65,6 +63,8 @@ public:
     uint32_t ID = 0; // invalid
     double   BatteryFsV = 0.0;
   };
+
+  inline static const size_t NO_CONTROL_IDX = 31;
 
   static const size_t MAX_CH = 16; // std::max(t14Channels, t18Channels);
   typedef size_t hwControlIdx_t;
@@ -144,9 +144,9 @@ public: // TODO: switch to private
   };
 
   std::vector<uint8_t> m_data;
-  TxType       m_txType     = TxType::INVALID_TX;
+  TxType       m_txType     = TxType::INVALID;
   Modulation   m_modulation = Modulation::INVALID;
-  ModelType    m_modelType  = ModelType::INVALID_MODEL;
+  ModelType    m_modelType  = ModelType::INVALID;
   std::wstring m_modelName  = L"UNKNOWN";
 
 public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -216,7 +216,7 @@ private:
     // Read model type
     const size_t i = (m_txType == TxType::T18SZ) ? 93 : 152;
     const uint8_t v = m_data.at(i + 1) / 16;
-    m_modelType = (v > to_ut(ModelType::Multi))? ModelType::INVALID_MODEL : static_cast<ModelType>(v);
+    m_modelType = (v > to_ut(ModelType::Multi))? ModelType::INVALID : static_cast<ModelType>(v);
     m_wingType = m_data.at(i) & 0x0F;
     m_tailType = (m_data.at(i) & 0x30) >> 4;
 
@@ -284,7 +284,7 @@ private:
     case ModelType::Glider: m_fa = FUNCTIONS_AIR;   break;
     case ModelType::Heli:   m_fa = FUNCTIONS_HELI;  break;
     case ModelType::Multi:  m_fa = FUNCTIONS_MULTI; break;
-    case ModelType::INVALID_MODEL: assert(!"Invalid model type"); break;
+    case ModelType::INVALID: assert(!"Invalid model type"); break;
     }
     if (m_txType != TxType::T18SZ && m_modelType == ModelType::Plane) {
       m_fa[25] = "VPP"s;
@@ -317,7 +317,7 @@ private:
         m_conditionName[3] = L"DISTANCE"; m_conditionName[4] = L"LANDING";
         m_numConditions = 5;
         break;
-      case ModelType::INVALID_MODEL: assert(!"Invalid model type"); break;
+      case ModelType::INVALID: assert(!"Invalid model type"); break;
       default: break; // do nothing
       }
     }
@@ -809,12 +809,12 @@ int main(int argc, char* argv[])
     Model m{ std::filesystem::path(fname) };
     if (!m.empty())
     {
-      std::cout << "TX: " << ((m.m_txType == Model::TxType::INVALID_TX) ? "INVALID"
+      std::cout << "TX: " << ((m.m_txType == Model::TxType::INVALID) ? "INVALID"
         : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[to_ut(m.m_txType)]) << std::endl;
 
       std::wcout << L"Model name: \"" << m.getModelName() << L"\"" << std::endl;
 
-      std::cout << "Model: " << ((m.m_modelType == Model::ModelType::INVALID_MODEL) ? "INVALID"
+      std::cout << "Model: " << ((m.m_modelType == Model::ModelType::INVALID) ? "INVALID"
         : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[to_ut(m.m_modelType)]) << "\n\n";
 
       const auto modulation = to_ut(m.getModulation());
