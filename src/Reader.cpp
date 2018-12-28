@@ -1,5 +1,13 @@
 // Builds warning free with:
 //  g++ -std=c++17 -Wall -Wextra -Wshadow -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Wunused -Woverloaded-virtual -Wpedantic -Wsign-conversion -Wmisleading-indentation -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference -Wuseless-cast -Wdouble-promotion -Wformat=2
+// In VB:
+// & -> Long
+// % -> Integer
+// # -> Double
+// ! -> Single
+// @ -> Decimal
+// $ -> String
+
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -64,10 +72,10 @@ public:
     double   BatteryFsV = 0.0;
   };
 
-  inline static const size_t NO_CONTROL_IDX = 31;
+  inline static const size_t NO_CONTROL_IDX = 31; // GCC 8 requires "inline", WTF? 
 
   static const size_t MAX_CH = 16; // std::max(t14Channels, t18Channels);
-  typedef size_t hwControlIdx_t;
+  typedef size_t hwCtrlIdx;
   struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
     bool operator ==(const ConditionDependentParams& o) const {
@@ -78,11 +86,11 @@ public:
       }
       return true;
     }
-    std::array<hwControlIdx_t, MAX_CH> control;
+    std::array<hwCtrlIdx, MAX_CH> control;
     std::string conditionControl;
   };
 
-public: // TODO: switch to private
+private:
   static const size_t t14Channels   = 12, t18Channels = 16;
   static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
   static const size_t t14Conditions  = 5, t18Conditions = 8;
@@ -91,9 +99,9 @@ public: // TODO: switch to private
 
   static const std::array<const char*, NO_CONTROL_IDX+1> hwCtrlDesc;
 
-  uint8_t     m_wingType = 0;
-  uint8_t     m_tailType = 0;
-  uint16_t    m_FSMode = 0;
+  uint8_t     m_wingType  = 0;
+  uint8_t     m_tailType  = 0;
+  uint16_t    m_FSMode    = 0;
   uint16_t    m_FSBattery = 0;
   std::string m_releaseBfsHW;
   bool        m_sysTelemAct = false;
@@ -101,37 +109,29 @@ public: // TODO: switch to private
   Geo         m_Area = Geo::UNKNOWN;
   double      m_telemDlInterval = 0.0;
 
-  std::array<bool,     MAX_CH> m_reversed;
-  std::array<bool,     2>      m_reversedDG;
-  std::array<uint8_t,  MAX_CH> m_travelLo, m_travelHi, m_limitLo, m_limitHi;
-  std::array<uint8_t,  MAX_CH> m_sSpeed; // [0, 27]
-  std::array<int16_t,  MAX_CH> m_sTrim;  // [-240, 240]
-  std::array<int16_t,  MAX_CH> m_fsPosition;
-  std::array<hwControlIdx_t, MAX_CH> m_trim;
-  std::array<int16_t,  MAX_CH> m_trimRate;
-  std::array<TrimMode, MAX_CH> m_trimMode;
-  std::array<RxInfo,   2>      m_RX;
+  std::array<bool,      MAX_CH> m_reversed;
+  std::array<bool,      2>      m_reversedDG;
+  std::array<uint8_t,   MAX_CH> m_travelLo, m_travelHi, m_limitLo, m_limitHi;
+  std::array<uint8_t,   MAX_CH> m_sSpeed; // [0, 27]
+  std::array<int16_t,   MAX_CH> m_sTrim;  // [-240, 240]
+  std::array<int16_t,   MAX_CH> m_fsPosition;
+  std::array<hwCtrlIdx, MAX_CH> m_trim;
+  std::array<int16_t,   MAX_CH> m_trimRate;
+  std::array<TrimMode,  MAX_CH> m_trimMode;
+  std::array<RxInfo,    2>      m_RX;
 
   size_t m_numConditions = 1; // 1 for condition-less models, or set in getConditions()
   std::vector<ConditionDependentParams> m_conditionalData; // .size() == m_numConditions
 
   std::array<uint8_t, MAX_CH> m_functn; // value is the index of std::array<std::string, NUMBER_OF_FUNCTIONS>, i.e. < 33
 
-  std::array<std::string, NUMBER_OF_FUNCTIONS> m_fa;
+  std::array<std::string, NUMBER_OF_FUNCTIONS> m_funcName;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_AIR;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_HELI;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_MULTI;
  
   static const std::array<uint8_t, 16> TELEMETRY_TYPE;
   static const std::array<double,  16> TFHSS_VOLT_LIST;
-
-  // VB:
-  // & -> Long
-  // % -> Integer
-  // # -> Double
-  // ! -> Single
-  // @ -> Decimal
-  // $ -> String
 
   std::array<std::wstring, t18Conditions> m_conditionName;
   std::array<size_t, t18Conditions> m_conditionState, m_conditionList;
@@ -177,19 +177,132 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     return m_modulation;
   }
 
-  [[nodiscard]] static constexpr uint8_t cServoSpeed(uint8_t y) noexcept {
-    if (y < 67) { return static_cast<uint8_t>(y / 10.0 + 0.5); }
-    if (y < 78) { return static_cast<uint8_t>((y - 67)/4.0 + 0.5) + 0x07U; }
-    if (y ==78) { return 10; } // y - 68;
-    if (y < 88) { return static_cast<uint8_t>((y - 80)/3.0 + 0.5) + 0x0BU; }
-    return  static_cast<uint8_t>(y - 74);
+  void dump(std::ostream& out = std::cout, std::wostream& wout = std::wcout) {
+    if (!empty()) {
+      out << "TX: " << ((m_txType == Model::TxType::INVALID) ? "INVALID"
+        : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[to_ut(m_txType)]) << std::endl;
+
+      wout << L"Model name: \"" << getModelName() << L"\"" << std::endl;
+
+      out << "Model: " << ((m_modelType == Model::ModelType::INVALID) ? "INVALID"
+        : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[to_ut(m_modelType)]) << "\n\n";
+
+      const auto modulation = to_ut(getModulation());
+      const char* modulationList[16] = { "FASST 7CH",     "FASST MULTI", "FASST MLT2",    "--",
+                                         "S-FHSS",        "--",          "--",            "--",
+                                         "FASSTest 14CH", "--",          "FASSTest 12CH", "--",
+                                         "T-FHSS",        "--",          "--",            "--" };
+      out << "SYSTEM" << std::endl;
+      out << "\t" << modulationList[modulation] << "  " << ((m_singleRX) ? "SINGLE" : "DUAL") << " "
+        << ((m_Area == Model::Geo::UNKNOWN) ? "" : (m_Area == Model::Geo::General ? "G" : "F")) << std::endl;
+      out << "\t" << m_RX[0].ID;
+      if (!m_singleRX) { out << "\t\t" << m_RX[1].ID; }
+      out << std::endl;
+      out << "\t" << std::setprecision(2) << m_RX[0].BatteryFsV << "V";
+      if (!m_singleRX) { out << "\t\t" << std::setprecision(2) << m_RX[1].BatteryFsV << "V"; }
+      out << std::endl;
+      out << "\tTELEMETRY: " << ((m_sysTelemAct) ? "ACT" : "INH")
+        << " DL " << std::setprecision(2) << m_telemDlInterval << "s" << std::endl;
+
+
+      out << "Reverse & End Point" << std::endl;
+      const size_t numChannels = (m_txType == Model::TxType::T18SZ) ? Model::t18Channels : Model::t14Channels;
+      for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+        out << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m_funcName[m_functn[chIdx]] << ": "
+          << ((m_reversed[chIdx]) ? "REVERSED" : "normal  ") << "  "
+          << std::right << std::setw(3) << static_cast<int>(m_limitLo[chIdx]) << "  "
+          << std::setw(3) << static_cast<int>(m_travelLo[chIdx]) << "   "
+          << std::setw(3) << static_cast<int>(m_travelHi[chIdx]) << "  "
+          << std::setw(3) << static_cast<int>(m_limitHi[chIdx]) << std::endl;
+      }
+      for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
+        out << "\t" << std::setw(2) << chIdx + 13 << " DG" << chIdx << "       : "
+          << ((m_reversedDG[chIdx]) ? "REVERSED" : "normal") << std::endl;
+      }
+
+      out << "Servo Speed & SubTrim" << std::endl;
+      for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+        out << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m_funcName[m_functn[chIdx]] << ": "
+          << std::right << std::setw(3) << static_cast<int>(cServoSpeed(m_sSpeed[chIdx])) << "  " << std::setw(3)
+          << static_cast<int>(m_sTrim[chIdx]) << std::endl;
+      }
+
+      auto cFailSafe = [this](size_t chIdx) { return ((m_FSMode    & (1 << chIdx)) == 0) ? "HOLD" : "F/S"; };
+      auto cBatteryFS = [this](size_t chIdx) { return ((m_FSBattery & (1 << chIdx)) == 0) ? " OFF" : "ON"; };
+      out << "Fail Safe" << std::endl;
+      out << "\t\t\tF/S\tB.F/S\tPOS" << std::endl;
+      for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+        out << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m_funcName[m_functn[chIdx]] << ": "
+          << '\t' << cFailSafe(chIdx) << "\t" << cBatteryFS(chIdx);
+        if ((m_FSMode & (1 << chIdx)) != 0 || (m_FSBattery & (1 << chIdx)) != 0) {
+          out << '\t' << std::right << std::setw(4) << m_fsPosition[chIdx] << "%";
+        }
+        out << std::right << std::endl;
+      }
+      out << "\tRelease battery F/S: " << m_releaseBfsHW << std::endl;
+
+      if (m_txType == Model::TxType::T18SZ || m_modelType == Model::ModelType::Heli || m_modelType == Model::ModelType::Glider) {
+        out << "Condition #" << std::endl;
+        for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx) {
+          wout << L"\t" << condIdx + 1 << L": " << m_conditionName[condIdx];
+          out << "  " << m_conditionalData[condIdx].conditionControl << std::endl;
+        }
+      }
+
+      out << "Function" << std::endl;
+      for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx)
+      {
+        if (m_numConditions > 1) {
+          wout << L"    Condition #" << condIdx + 1 << L": " << m_conditionName[condIdx] << std::endl;
+        }
+
+        const auto& cd = m_conditionalData[condIdx];
+
+        const size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
+        size_t sameAsCondition = INVALID_INDEX;
+        if (condIdx > 0) {
+          for (size_t prevCondIdx = 0; prevCondIdx < condIdx; ++prevCondIdx) {
+            if (m_conditionalData[prevCondIdx] == cd) {
+              sameAsCondition = prevCondIdx;
+              break;
+            }
+          }
+        }
+        if (sameAsCondition != INVALID_INDEX) {
+          wout << L"\tSame as condition #" << sameAsCondition + 1 << L" " << m_conditionName[sameAsCondition] << std::endl;
+        } else {
+          out << "\t # Function  Ctrl Trim Rate  Mode" << std::endl;
+          for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
+            out << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m_funcName[m_functn[chIdx]] << ": "
+              << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[m_trim[chIdx]]
+              << "  " << std::showpos << m_trimRate[chIdx] << "%  "
+              << std::array<std::string, 5>{ {"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<size_t>(to_ut(m_trimMode[chIdx]) % 5U)]
+              << std::endl;
+          }
+          for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
+            out << "\t" << std::setw(2) << chIdx + 13 << " DG" << chIdx << "       :" << m_digiCtrl[chIdx] << std::endl;
+          }
+        }
+      }
+    } else {
+      out << "Model empty" << std::endl;
+    }
   }
 
 private:
+  [[nodiscard]] static constexpr uint8_t cServoSpeed(uint8_t y) noexcept {
+    if (y < 67) { return static_cast<uint8_t>(y / 10.0 + 0.5); }
+    if (y < 78) { return static_cast<uint8_t>((y - 67) / 4.0 + 0.5) + 0x07U; }
+    if (y == 78) { return 10; } // y - 68;
+    if (y < 88) { return static_cast<uint8_t>((y - 80) / 3.0 + 0.5) + 0x0BU; }
+    return  static_cast<uint8_t>(y - 74);
+  }
+
   [[nodiscard]] inline bool isT18SZ() const noexcept { // TODO: replace everywhere
     return (m_txType == TxType::T18SZ);
   }
 
+  // Read all the parameters from m_data
   void process() {
     m_modelName = readModelName();
 
@@ -217,7 +330,7 @@ private:
     const size_t i = (m_txType == TxType::T18SZ) ? 93 : 152;
     const uint8_t v = m_data.at(i + 1) / 16;
     m_modelType = (v > to_ut(ModelType::Multi))? ModelType::INVALID : static_cast<ModelType>(v);
-    m_wingType = m_data.at(i) & 0x0F;
+    m_wingType =  m_data.at(i) & 0x0F;
     m_tailType = (m_data.at(i) & 0x30) >> 4;
 
     // Read modulation
@@ -255,7 +368,7 @@ private:
       startPos = 17; len = 10;
     }
 
-    std::array<wchar_t, 15> buffer; // longer len
+    std::array<wchar_t, 15> buffer; // longer of the two len
     size_t i = 0;
     for (size_t j = startPos; i < len; j += 2) {
       buffer[i] = static_cast<wchar_t>((m_data.at(j) << 8) + m_data.at(j + 1));
@@ -266,29 +379,25 @@ private:
     return std::wstring{ buffer.data(), i };
   }
 
-  void readFunction()
-  {
-    const size_t addr14Func = 178, addr18Func = 102;
-
+  void readFunction() {
     size_t numChannels, addr;
-    if (m_txType == TxType::T18SZ) {
-      numChannels = t18Channels; addr = addr18Func;
+    if (isT18SZ()) {
+      numChannels = t18Channels; addr = 102;
     } else {
-      numChannels = t14Channels; addr = addr14Func;
+      numChannels = t14Channels; addr = 178;
     }
     for (size_t i = 0; i < numChannels; ++i) {
       m_functn[i] = m_data.at(addr + i);
     }
     switch (m_modelType) {
     case ModelType::Plane:
-    case ModelType::Glider: m_fa = FUNCTIONS_AIR;   break;
-    case ModelType::Heli:   m_fa = FUNCTIONS_HELI;  break;
-    case ModelType::Multi:  m_fa = FUNCTIONS_MULTI; break;
+    case ModelType::Glider: m_funcName = FUNCTIONS_AIR;   break;
+    case ModelType::Heli:   m_funcName = FUNCTIONS_HELI;  break;
+    case ModelType::Multi:  m_funcName = FUNCTIONS_MULTI; break;
     case ModelType::INVALID: assert(!"Invalid model type"); break;
     }
-    if (m_txType != TxType::T18SZ && m_modelType == ModelType::Plane) {
-      m_fa[25] = "VPP"s;
-      return;
+    if (!isT18SZ() && m_modelType == ModelType::Plane) {
+      m_funcName[25] = "VPP"s;
     }
   }
 
@@ -382,12 +491,11 @@ private:
     }
   }
 
-  HwNamnes getHardware(size_t a) const 
-  {
+  HwNamnes getHardware(size_t a) const {
     HwNamnes hw;
     const uint8_t hC0 = m_data.at(a);
-    const uint8_t i1 = m_data.at(a + 1);
-    const uint8_t i2 = m_data.at(a + 2);
+    const uint8_t i1  = m_data.at(a + 1);
+    const uint8_t i2  = m_data.at(a + 2);
     if (hC0 == 0xFF) {
       hw.Type = -1; hw.Ctrl = "--";
       hw.Pos = (i1 != 0 || i2 != 0) ? "OFF" : "ON";
@@ -395,12 +503,15 @@ private:
     }
     const uint8_t hR = hC0 & 0x40;
     const uint8_t hC = hC0 & 0x3F;
-    if (hC >= 32) { hw.Ctrl = "Logic"; return hw; }
+    if (hC >= 32) { 
+      hw.Ctrl = "Logic"; 
+      return hw; 
+    }
     hw.Ctrl = hwCtrlDesc[hC];
     if ((hC & 0x34) == 4) {
       if ((hC & 0x37) == 7) {
         hw.Type = 2; // 2-position switch
-        hw.Pos = (hR == 0) ? "OFF/ON" : "ON/OFF";
+        hw.Pos = (hR == 0)? "OFF/ON" : "ON/OFF";
         return hw;
       }
       hw.Type = 3; // 3 - position switch
@@ -413,20 +524,24 @@ private:
     }
     hw.Type = 0; // Analog input
     hw.Rev = (hR == 0) ? "Normal" : "Reverse";
-    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { hw.Sym = "Symmetry"; hw.Pos = std::to_string(round(static_cast<int8_t>(i2)*100.0 / 64)); return hw; }
-    if (i1 - i2 == 1) { hw.Sym = "Linear";   hw.Pos = std::to_string(round(static_cast<int8_t>(i1)*100.0 / 64)); return hw; }
+    if (static_cast<uint16_t>(i1) + i2 == 0x0100) { 
+      hw.Sym = "Symmetry"; 
+      hw.Pos = std::to_string(round(static_cast<int8_t>(i2)*100.0 / 64)); 
+      return hw; 
+    }
+    if (i1 - i2 == 1) { 
+      hw.Sym = "Linear";   
+      hw.Pos = std::to_string(round(static_cast<int8_t>(i1)*100.0 / 64)); 
+      return hw; 
+    }
     hw.Pos = "Error!!!"; hw.Rev = ""; hw.Sym = "";
     return hw;
   }
 
-
-  void readConditionSelect()
-  {
+  void readConditionSelect() {
     auto logicSwitch = [this](size_t a) -> std::string {
-      const size_t addr14logSw = 328, addr18logSw = 456;
-      const size_t aa = (m_txType == TxType::T18SZ) ? addr18logSw : addr14logSw;
-      if ((m_data.at(a) & 48) == 48)
-      {
+      const size_t aa = isT18SZ()? 456 : 328;
+      if ((m_data.at(a) & 48) == 48) {
         auto hw = getHardware(aa + (m_data.at(a) & 0x07U) * 6U);
         std::string alt = hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
         if (m_data.at(a + 1) & 128) {
@@ -446,8 +561,7 @@ private:
           alt = alt + " Alternate";
         }
         return alt;
-      }
-      else {
+      } else {
         auto hw = getHardware(a);
         return hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
       }
@@ -460,21 +574,17 @@ private:
     }
   }
 
-  void readServoRevers()
-  {
+  void readServoRevers() {
     m_reversed.fill(false);
     m_reversedDG.fill(false);
 
-    const size_t addr14RevLo = 268, addr14RevHi = 165, addr14RevDg = 154;
-    const size_t addr18RevLo = 252, addr18RevHi = 253, addr18RevDg = 518;
-
-    const bool isT18SZ = (m_txType == TxType::T18SZ);
-    const uint8_t  revLo = m_data.at((isT18SZ) ? addr18RevLo : addr14RevLo);
-    const uint16_t revHi = m_data.at((isT18SZ) ? addr18RevHi : addr14RevHi);
-    const uint8_t  revDg = m_data.at((isT18SZ) ? addr18RevDg : addr14RevDg) & 0xC0;
+    const bool isT18 = isT18SZ();
+    const uint8_t  revLo = m_data.at((isT18)? 252 : 268);
+    const uint16_t revHi = m_data.at((isT18)? 253 : 165);
+    const uint8_t  revDg = m_data.at((isT18)? 518 : 154) & 0xC0;
     const uint16_t rev = (revHi << 8) | revLo;
 
-    const size_t numChannels = (isT18SZ) ? t18Channels : t14Channels;
+    const size_t numChannels = (isT18)? t18Channels : t14Channels;
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
       m_reversed[chIdx] = (rev & (0x0001 << chIdx)) != 0;
     }
@@ -482,72 +592,53 @@ private:
     m_reversedDG[1] = (revDg & 0x80) != 0;
   }
 
-  void readEndPoints()
-  {
+  void readEndPoints() {
     m_travelLo.fill(0); m_travelHi.fill(0);
-    m_limitLo.fill(0); m_limitHi.fill(0);
-
-    const size_t addr14TrlLo = 290, addr14TrlHi = 706, addr18TrlLo = 254, addr18TrlHi = 562;
-    const size_t addr14LimLo = 664, addr14LimHi = 714, addr18LimLo = 278, addr18LimHi = 570;
-
+    m_limitLo.fill(0);  m_limitHi.fill(0);
     size_t atl, ath, ln, all, alh;
-    const bool isT18SZ = (m_txType == TxType::T18SZ);
-    if (isT18SZ) {
-      atl = addr18TrlLo; ath = addr18TrlHi; ln = t18ChannelsLow;
-      all = addr18LimLo; alh = addr18LimHi;
+    if (isT18SZ()) {
+      atl = 254; ath = 562; ln = t18ChannelsLow;
+      all = 278; alh = 570;
+    } else {
+      atl = 290; ath = 706; ln = t14ChannelsLow;
+      all = 664; alh = 714;
     }
-    else {
-      atl = addr14TrlLo; ath = addr14TrlHi; ln = t14ChannelsLow;
-      all = addr14LimLo; alh = addr14LimHi;
-    }
-    const size_t numChannels = (isT18SZ) ? t18Channels : t14Channels;
+    const size_t numChannels = (isT18SZ())? t18Channels : t14Channels;
     for (size_t i = 0; i < numChannels; ++i) {
-      size_t j = (i < ln) ? atl + i * 2 : ath + (i - ln) * 2;
-      m_travelLo[i] = m_data.at(j); m_travelHi[i] = m_data.at(j + 1);
-      j = (i < ln) ? all + i * 2 : alh + (i - ln) * 2;
-      m_limitLo[i] = m_data.at(j); m_limitHi[i] = m_data.at(j + 1);
+      size_t j = (i < ln) ? atl + i*2 : ath + (i - ln)*2;
+      m_travelLo[i] = m_data.at(j);  m_travelHi[i] = m_data.at(j + 1);
+      j = (i < ln) ? all + i*2 : alh + (i - ln)*2;
+      m_limitLo[i] = m_data.at(j);   m_limitHi[i] = m_data.at(j + 1);
     }
   }
 
-  void readServoSpeed()
-  {
+  void readServoSpeed() {
     m_sSpeed.fill(0);
-
-    const size_t addr14sSpLo = 1812, addr14sSpHi = 1828, addr18sSpLo = 438, addr18sSpHi = 594;
-    const bool isT18SZ = (m_txType == TxType::T18SZ);
     size_t al, ah, ln, k;
-    if (isT18SZ) {
-      al = addr18sSpLo; ah = addr18sSpHi; ln = t18ChannelsLow; k = 1;
+    if (isT18SZ()) {
+      al = 438;  ah = 594; ln = t18ChannelsLow;  k = 1;
+    } else {
+      al = 1812; ah = 1828; ln = t14ChannelsLow; k = 2;
     }
-    else {
-      al = addr14sSpLo; ah = addr14sSpHi; ln = t14ChannelsLow; k = 2;
-    }
-    const size_t numChannels = (isT18SZ) ? t18Channels : t14Channels;
+    const size_t numChannels = (isT18SZ()) ? t18Channels : t14Channels;
     for (size_t i = 0; i < numChannels; ++i) {
       const size_t j = (i < ln) ? al + i * k : ah + (i - ln)*k;
       m_sSpeed[i] = m_data.at(j);
     }
   }
 
-  void readSubTrim()
-  {
+  void readSubTrim() {
     m_sTrim.fill(0);
-
-    const size_t  addr14sTrLo = 306, addr14sTrHi = 166, addr18sTrLo = 414, addr18sTrHi = 586;
-    const bool isT18SZ = (m_txType == TxType::T18SZ);
     size_t al, ah, ln;
-    if (isT18SZ) {
-      al = addr18sTrLo; ah = addr18sTrHi; ln = t18ChannelsLow;
+    if (isT18SZ()) {
+      al = 414; ah = 586; ln = t18ChannelsLow;
+    } else {
+      al = 306; ah = 166; ln = t14ChannelsLow;
     }
-    else {
-      al = addr14sTrLo; ah = addr14sTrHi; ln = t14ChannelsLow;
-    }
-    const size_t numChannels = (isT18SZ) ? t18Channels : t14Channels;
+    const size_t numChannels = (isT18SZ())? t18Channels : t14Channels;
     for (size_t i = 0; i < numChannels; ++i) {
-      const size_t j = (i < ln) ? al + i * 2 : ah + (i - ln) * 2;
-      const uint8_t hi = m_data.at(j);
-      const uint8_t lo = m_data.at(j + 1);
-      m_sTrim[i] = (hi << 8) | lo;
+      const size_t j = (i < ln)? al + i*2 : ah + (i - ln)*2;
+      m_sTrim[i] = (m_data.at(j) << 8) | m_data.at(j + 1);
     }
   }
 
@@ -565,22 +656,20 @@ private:
     assert(m_numConditions > 0);
     m_conditionalData.resize(m_numConditions);
 
-    const bool isT18SZ = (m_txType == TxType::T18SZ);
+    const bool isT18 = isT18SZ();
 
     // Control assignments for each condition
-    for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx)
-    {
+    for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx) {
       auto& cd = m_conditionalData.at(condIdx);
-      if (isT18SZ)
-      {
+      if (isT18) {
         const size_t  ac = addr18CondStart, lc = t18CondLength, axc = addr18fnXC;
         for (size_t i = 0; i < t18Channels; ++i) {
           size_t a1 = axc + m_functn[i];
           size_t a2 = ac + lc * (m_conditionList[condIdx]) + m_data.at(a1);
-          cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, m_data.at(a2));
+          cd.control[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2));
           a1 = axc + m_functn[i] + NUMBER_OF_FUNCTIONS - 1;
           a2 = ac + lc * (m_conditionList[condIdx]) + MAX_CH + m_data.at(a1);
-          m_trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, m_data.at(a2)); // <<< DEBUG move out of condIdx loop!
+          m_trim[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2)); // <<< DEBUG move out of condIdx loop!
         }
       } else {
         static const std::array<size_t, 3> ag = { addr14fnGrBfly, addr14fnGrCamb, addr14fnGrMot };
@@ -592,9 +681,9 @@ private:
               a2 = a1 + m_conditionList[condIdx] + 1;
             }
           }
-          cd.control[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, m_data.at(a2));
+          cd.control[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2));
           a2 = addr14fnTrim + m_data.at(addr14fnXC + m_functn[i]);
-          m_trim[i] = std::min<hwControlIdx_t>(NO_CONTROL_IDX, m_data.at(a2)); // <<< DEBUG move out of condIdx loop!
+          m_trim[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2)); // <<< DEBUG move out of condIdx loop!
         }
       }
     }
@@ -603,7 +692,7 @@ private:
     const std::string ls = " ";
     for (size_t ch = 0; ch < 2; ++ch)
     {
-      if (isT18SZ)
+      if (isT18)
       {
         if ((m_data.at(addr18dgCtrl + ch * 3) & 48) == 48)
         {
@@ -640,13 +729,12 @@ private:
     }
 
     // Trim rates
-    const size_t numChannels = (isT18SZ) ? t18Channels : t14Channels;
+    const size_t numChannels = (isT18) ? t18Channels : t14Channels;
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
       size_t atr, ats, x;
-      if (isT18SZ) {
+      if (isT18) {
         atr = addr18fnTRt; ats = addr18fnTSg; x = m_functn[chIdx];
-      }
-      else {
+      } else {
         atr = addr14fnTRt; ats = addr14fnTSg; x = m_data.at(addr14fnXC + m_functn[chIdx]);
       }
       const uint8_t m = static_cast<uint8_t>(1U << (x % 8));
@@ -657,54 +745,44 @@ private:
     // Trim mode
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
       size_t atc, atm, atr, x;
-      if (isT18SZ) {
+      if (isT18) {
         atc = addr18fnTCn; atm = addr18fnTMd; atr = addr18fnTMr; x = m_functn[chIdx];
-      }
-      else {
+      } else {
         atc = addr14fnTCn; atm = addr14fnTMd; atr = addr14fnTMr; x = m_data.at(addr14fnXC + m_functn[chIdx]);
       }
       const uint8_t m = static_cast<uint8_t>(1 << (x % 8U));
       if ((m_data.at(atc + x / 8) & m) == 0 && (m_data.at(atm + x / 8) & m) == 0) {
         m_trimMode[chIdx] = TrimMode::Normal;
-      }
-      else {
+      } else {
         if (m_data.at(atm + x / 8) & m) {
           m_trimMode[chIdx] = (m_data.at(atr + x / 8) & m) ? TrimMode::ATLRev : TrimMode::ATLNorm;
-        }
-        else {
+        } else {
           m_trimMode[chIdx] = TrimMode::Center;
         }
       }
     }
   }
 
-  void readFailSafe()
-  {
-    const size_t addr14fsLo = 269, addr14fsHi = 697, addr18fsLo = 334, addr18fsHi = 335;
-    const size_t addr14bfsLo = 286, addr14bfsHi = 164, addr18bfsLo = 360, addr18bfsHi = 361;
-    const size_t addr14fsPosLo = 270, addr14fsPosHi = 698, addr18fsPosLo = 336, addr18fsPosHi = 578;
-    const size_t addr14relBFS = 287, addr18relBFS = 362;
-
-    const bool isT18SZ = (m_txType == TxType::T18SZ);
-    m_FSMode = (m_data.at((isT18SZ) ? addr18fsHi : addr14fsHi) << 8) + m_data.at((isT18SZ) ? addr18fsLo : addr14fsLo);
-    m_FSBattery = (m_data.at((isT18SZ) ? addr18bfsHi : addr14bfsHi) << 8) + m_data.at((isT18SZ) ? addr18bfsLo : addr14bfsLo);
+  void readFailSafe() {
+    const bool isT18 = isT18SZ();
+    m_FSMode = (m_data.at((isT18) ? 335 : 697) << 8) + m_data.at((isT18) ? 334 : 269);
+    m_FSBattery = (m_data.at((isT18) ? 361 : 164) << 8) + m_data.at((isT18) ? 360 : 286);
 
     size_t al, ah, ln;
-    if (isT18SZ) {
-      al = addr18fsPosLo; ah = addr18fsPosHi; ln = t18ChannelsLow;
+    if (isT18) {
+      al = 336; ah = 578; ln = t18ChannelsLow;
+    } else {
+      al = 270; ah = 698; ln = t14ChannelsLow;
     }
-    else {
-      al = addr14fsPosLo; ah = addr14fsPosHi; ln = t14ChannelsLow;
-    }
-    const size_t numChannels = (isT18SZ)? t18Channels : t14Channels;
+    const size_t numChannels = (isT18)? t18Channels : t14Channels;
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-      const size_t addr = (chIdx < ln) ? al + chIdx * 2
-        : ah + (chIdx - ln) * 2;
+      const size_t addr = (chIdx < ln)? al + chIdx * 2
+                                      : ah + (chIdx - ln) * 2;
       const int16_t st = (m_data.at(addr) << 8) + m_data.at(addr + 1);
       m_fsPosition[chIdx] = static_cast<int16_t>(round((st - 1024) / 6.73));
     }
 
-    auto hw = getHardware((isT18SZ) ? addr18relBFS : addr14relBFS);
+    auto hw = getHardware((isT18) ? 362 : 287);
     m_releaseBfsHW = hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
   }
 
@@ -714,32 +792,18 @@ private:
     };
     auto getBFsVoltage = [this](size_t sysModultn, size_t a) -> double {
       const size_t tlmType = TELEMETRY_TYPE[sysModultn % TELEMETRY_TYPE.size()];
-      const double v = (tlmType == 1) ? m_data.at(a) / 10.0
-                     : (tlmType == 2) ? TFHSS_VOLT_LIST[m_data.at(a) % TFHSS_VOLT_LIST.size()]
-                                      : 0.0;
-      return v;
+      return (tlmType == 1) ? m_data.at(a) / 10.0
+                            : (tlmType == 2) ? TFHSS_VOLT_LIST[m_data.at(a) % TFHSS_VOLT_LIST.size()]
+                                             : 0.0;
     };
 
-    constexpr size_t rxIDlen = 4;
-    const size_t addr14IDRx1 = 2196, addr14IDRx2 = addr14IDRx1 + rxIDlen;
-    const size_t addr18IDRx1 = 406, addr18IDRx2 = addr18IDRx1 + rxIDlen;
-    const size_t addr14sysAr = 156, addr14rxQty = 2204, mask14rxQty = 1;
-    const size_t addr18sysAr = 0, addr18rxQty = 516, mask18rxQty = 2;
-    const size_t addr14tAct = 2206, mask14tAct = 128;
-    const size_t addr18tAct = 92, mask18tAct = 2;
-    const size_t addr14dlI = 2206, div14dlI = 1;
-    const size_t addr18dlI = 516, div18dlI = 4;
-    const size_t addr14bfsvRx1 = 2208, addr14bfsvRx2 = 2209;
-    const size_t addr18bfsvRx1 = 401, addr18bfsvRx2 = 402;
-
     size_t aa, ar, ai1, ai2, ata, mta, adl, ddl, av1, av2, mr;
-    if (m_txType == TxType::T18SZ) {
-      aa = addr18sysAr; ar = addr18rxQty; ai1 = addr18IDRx1; ai2 = addr18IDRx2; ata = addr18tAct; mta = mask18tAct;
-      adl = addr18dlI; ddl = div18dlI; av1 = addr18bfsvRx1; av2 = addr18bfsvRx2; mr = mask18rxQty;
-    }
-    else {
-      aa = addr14sysAr; ar = addr14rxQty; ai1 = addr14IDRx1; ai2 = addr14IDRx2; ata = addr14tAct; mta = mask14tAct;
-      adl = addr14dlI; ddl = div14dlI; av1 = addr14bfsvRx1; av2 = addr14bfsvRx2; mr = mask14rxQty;
+    if (isT18SZ()) {
+      aa = 0; ar = 516; ai1 = 406; ai2 = 410; ata = 92; mta = 2;
+      adl = 516; ddl = 4; av1 = 401; av2 = 402; mr = 2;
+    } else {
+      aa = 156; ar = 2204; ai1 = 2196; ai2 = 2200; ata = 2206; mta = 128;
+      adl = 2206; ddl = 1; av1 = 2208; av2 = 2209; mr = 1;
     }
     m_sysTelemAct = (m_data.at(ata) & mta) != 0;
     const size_t sysModulation = to_ut(m_modulation);
@@ -807,118 +871,7 @@ int main(int argc, char* argv[])
 
   for (const char* fname : names) {
     Model m{ std::filesystem::path(fname) };
-    if (!m.empty())
-    {
-      std::cout << "TX: " << ((m.m_txType == Model::TxType::INVALID) ? "INVALID"
-        : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[to_ut(m.m_txType)]) << std::endl;
-
-      std::wcout << L"Model name: \"" << m.getModelName() << L"\"" << std::endl;
-
-      std::cout << "Model: " << ((m.m_modelType == Model::ModelType::INVALID) ? "INVALID"
-        : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[to_ut(m.m_modelType)]) << "\n\n";
-
-      const auto modulation = to_ut(m.getModulation());
-      const char* modulationList[16] = { "FASST 7CH",     "FASST MULTI", "FASST MLT2",    "--",
-                                         "S-FHSS",        "--",          "--",            "--",
-                                         "FASSTest 14CH", "--",          "FASSTest 12CH", "--",
-                                         "T-FHSS",        "--",          "--",            "--" };
-      std::cout << "SYSTEM" << std::endl;
-      std::cout << "\t" << modulationList[modulation] << "  " << ((m.m_singleRX) ? "SINGLE" : "DUAL") << " "
-        << ((m.m_Area == Model::Geo::UNKNOWN) ? "" : (m.m_Area == Model::Geo::General ? "G" : "F")) << std::endl;
-      std::cout << "\t" << m.m_RX[0].ID;
-      if (!m.m_singleRX) { std::cout << "\t\t" << m.m_RX[1].ID; }
-      std::cout << std::endl;
-      std::cout << "\t" << std::setprecision(2) << m.m_RX[0].BatteryFsV << "V";
-      if (!m.m_singleRX) { std::cout << "\t\t" << std::setprecision(2) << m.m_RX[1].BatteryFsV << "V"; }
-      std::cout << std::endl;
-      std::cout << "\tTELEMETRY: " << ((m.m_sysTelemAct) ? "ACT" : "INH")
-        << " DL " << std::setprecision(2) << m.m_telemDlInterval << "s" << std::endl;
-
-
-      std::cout << "Reverse & End Point" << std::endl;
-      const size_t numChannels = (m.m_txType == Model::TxType::T18SZ) ? Model::t18Channels : Model::t14Channels;
-      for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-        std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m.m_fa[m.m_functn[chIdx]] << ": "
-          << ((m.m_reversed[chIdx]) ? "REVERSED" : "normal  ") << "  "
-          << std::right << std::setw(3) << static_cast<int>(m.m_limitLo[chIdx]) << "  "
-          << std::setw(3) << static_cast<int>(m.m_travelLo[chIdx]) << "   "
-          << std::setw(3) << static_cast<int>(m.m_travelHi[chIdx]) << "  "
-          << std::setw(3) << static_cast<int>(m.m_limitHi[chIdx]) << std::endl;
-      }
-      for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
-        std::cout << "\t" << std::setw(2) << chIdx + 13 << " DG" << chIdx << "       : " 
-          << ((m.m_reversedDG[chIdx]) ? "REVERSED" : "normal") << std::endl;
-      }
-
-      std::cout << "Servo Speed & SubTrim" << std::endl;
-      for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-        std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m.m_fa[m.m_functn[chIdx]] << ": "
-          << std::right << std::setw(3) << static_cast<int>(m.cServoSpeed(m.m_sSpeed[chIdx])) << "  " << std::setw(3)
-          << static_cast<int>(m.m_sTrim[chIdx]) << std::endl;
-      }
-
-      auto cFailSafe = [m](size_t chIdx) { return ((m.m_FSMode    & (1 << chIdx)) == 0) ? "HOLD" : "F/S"; };
-      auto cBatteryFS = [m](size_t chIdx) { return ((m.m_FSBattery & (1 << chIdx)) == 0) ? " OFF" : "ON"; };
-      std::cout << "Fail Safe" << std::endl;
-      std::cout << "\t\t\tF/S\tB.F/S\tPOS" << std::endl;
-      for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-        std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m.m_fa[m.m_functn[chIdx]] << ": "
-          << '\t' << cFailSafe(chIdx) << "\t" << cBatteryFS(chIdx);
-        if ((m.m_FSMode & (1 << chIdx)) != 0 || (m.m_FSBattery & (1 << chIdx)) != 0) {
-          std::cout << '\t' << std::right << std::setw(4) << m.m_fsPosition[chIdx] << "%";
-        }
-        std::cout << std::right << std::endl;
-      }
-      std::cout << "\tRelease battery F/S: " << m.m_releaseBfsHW << std::endl;
-
-      if (m.m_txType == Model::TxType::T18SZ || m.m_modelType == Model::ModelType::Heli || m.m_modelType == Model::ModelType::Glider) {
-        std::cout << "Condition #" << std::endl;
-        for (size_t condIdx = 0; condIdx < m.m_numConditions; ++condIdx) {
-          std::wcout << L"\t" << condIdx + 1 << L": " << m.m_conditionName[condIdx];
-          std::cout << "  " << m.m_conditionalData[condIdx].conditionControl << std::endl;
-        }
-      }
-
-      std::cout << "Function" << std::endl;
-      for (size_t condIdx = 0; condIdx < m.m_numConditions; ++condIdx)
-      {
-        if (m.m_numConditions > 1) {
-          std::wcout << L"    Condition #" << condIdx + 1 << L": " << m.m_conditionName[condIdx] << std::endl;
-        }
-
-        const auto& cd = m.m_conditionalData[condIdx];
-
-        const size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
-        size_t sameAsCondition = INVALID_INDEX;
-        if (condIdx > 0) {
-          for (size_t prevCondIdx = 0; prevCondIdx < condIdx; ++prevCondIdx) {
-            if (m.m_conditionalData[prevCondIdx] == cd) {
-              sameAsCondition = prevCondIdx;
-              break;
-            }
-          }
-        }
-        if (sameAsCondition != INVALID_INDEX) {
-          std::wcout << L"\tSame as condition #" << sameAsCondition + 1 << L" " << m.m_conditionName[sameAsCondition] << std::endl;
-        }
-        else {
-          std::cout << "\t # Function  Ctrl Trim Rate  Mode" << std::endl;
-          for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
-            std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m.m_fa[m.m_functn[chIdx]] << ": "
-              << std::right << m.hwCtrlDesc[cd.control[chIdx]] << "  " << m.hwCtrlDesc[m.m_trim[chIdx]]
-              << "  " << std::showpos << m.m_trimRate[chIdx] << "%  "
-              << std::array<std::string, 5>{ {"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}
-            [static_cast<size_t>(to_ut(m.m_trimMode[chIdx]) % 5U)]
-            << std::endl;
-          }
-          for (size_t chIdx = 0; chIdx < 2; ++chIdx) {
-            std::cout << "\t" << std::setw(2) << chIdx + 13 << " DG" << chIdx << "       :" << m.m_digiCtrl[chIdx] << std::endl;
-          }
-        }
-      }
-    } else {
-      std::cout << "Failed to load \"" << fname << "\"" << std::endl;
-    }
+    m.dump();
     std::cout << "-------------------" << std::endl;
   }
 }
