@@ -28,29 +28,29 @@ const size_t NO_CONTROL_IDX = 31; // for some strange reason, GCC doesn't like t
 //------------------------------------------------------------------------------
 class Model {
 public:
-  enum class eTxType : uint8_t {
+  enum class TxType : uint8_t {
     INVALID_TX = 0xFF, // <<< DEBUG // TODO: rename
     T8FG  = 0,
     T14SG = 1,
     T18SZ = 2
   };
-  enum class eAreaType : uint8_t {
+  enum class Geo : uint8_t {
     UNKNOWN,
     General,
     France
   };
-  enum class eModelType : uint8_t {
+  enum class ModelType : uint8_t {
     INVALID_MODEL = 0xFF, // TODO: rename
     Plane  = 0,
     Heli   = 1,
     Glider = 2,
     Multi  = 3
   };
-  enum class eTrimMode : uint8_t {
+  enum class TrimMode : uint8_t {
     INVALID = 0,
     Normal, ATLRev, ATLNorm, Center
   };
-  enum class eModulation : uint8_t { 
+  enum class Modulation : uint8_t { 
     INVALID    = 0xFF,
     FASST_7CH     = 0,
     FASST_MULTI   = 1, 
@@ -61,47 +61,13 @@ public:
     T_FHSS        = 12 
   };
 
-public: // TODO: switch to private
-  static const size_t t14Channels = 12, t18Channels = 16;
-  static const size_t MAX_CH = std::max(t14Channels, t18Channels);
-
-  static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
-
-  static const size_t t14Conditions = 5, t18Conditions = 8;
-  static const size_t maxConds = std::max(t14Conditions, t18Conditions);
-
-  static const size_t NUMBER_OF_FUNCTIONS = 33;
-
-  typedef size_t hwControlIdx_t;
-  static const std::array<const char*, NO_CONTROL_IDX+1> hwCtrlDesc;
-
-  uint8_t     m_wingType = 0;
-  uint8_t     m_tailType = 0;
-  uint16_t    m_FSMode = 0;
-  uint16_t    m_FSBattery = 0;
-  std::string m_releaseBfsHW;
-  bool        m_sysTelemAct = false;
-  bool        m_singleRX = true;
-  eAreaType   m_Area = eAreaType::UNKNOWN;
-  double      m_telemDlInterval = 0.0;
-
-  std::array<bool, MAX_CH>    m_reversed;
-  std::array<bool, 2>         m_reversedDG;
-  std::array<uint8_t, MAX_CH> m_travelLo, m_travelHi, m_limitLo, m_limitHi;
-  std::array<uint8_t, MAX_CH> m_sSpeed; // [0, 27]
-  std::array<int16_t, MAX_CH> m_sTrim;  // [-240, 240]
-  std::array<int16_t, MAX_CH> m_fsPosition;
-  std::array<hwControlIdx_t, MAX_CH> m_trim;
-  std::array<int16_t, MAX_CH>   m_trimRate;
-  std::array<eTrimMode, MAX_CH> m_trimMode;
-
   struct RxInfo {
     uint32_t ID = 0; // invalid
     double   BatteryFsV = 0.0;
   };
-  std::array<RxInfo, 2> m_RX;
 
-  size_t numConditions = 1; // 1 for condition-less models, or set in getConditions()
+  static const size_t MAX_CH = 16; // std::max(t14Channels, t18Channels);
+  typedef size_t hwControlIdx_t;
   struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
     bool operator ==(const ConditionDependentParams& o) const {
@@ -115,7 +81,39 @@ public: // TODO: switch to private
     std::array<hwControlIdx_t, MAX_CH> control;
     std::string conditionControl;
   };
-  std::vector<ConditionDependentParams> m_conditionalData; // .size() == numConditions
+
+public: // TODO: switch to private
+  static const size_t t14Channels   = 12, t18Channels = 16;
+  static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
+  static const size_t t14Conditions  = 5, t18Conditions = 8;
+  static const size_t maxConds = std::max(t14Conditions, t18Conditions);
+  static const size_t NUMBER_OF_FUNCTIONS = 33;
+
+  static const std::array<const char*, NO_CONTROL_IDX+1> hwCtrlDesc;
+
+  uint8_t     m_wingType = 0;
+  uint8_t     m_tailType = 0;
+  uint16_t    m_FSMode = 0;
+  uint16_t    m_FSBattery = 0;
+  std::string m_releaseBfsHW;
+  bool        m_sysTelemAct = false;
+  bool        m_singleRX = true;
+  Geo         m_Area = Geo::UNKNOWN;
+  double      m_telemDlInterval = 0.0;
+
+  std::array<bool,     MAX_CH> m_reversed;
+  std::array<bool,     2>      m_reversedDG;
+  std::array<uint8_t,  MAX_CH> m_travelLo, m_travelHi, m_limitLo, m_limitHi;
+  std::array<uint8_t,  MAX_CH> m_sSpeed; // [0, 27]
+  std::array<int16_t,  MAX_CH> m_sTrim;  // [-240, 240]
+  std::array<int16_t,  MAX_CH> m_fsPosition;
+  std::array<hwControlIdx_t, MAX_CH> m_trim;
+  std::array<int16_t,  MAX_CH> m_trimRate;
+  std::array<TrimMode, MAX_CH> m_trimMode;
+  std::array<RxInfo,   2>      m_RX;
+
+  size_t m_numConditions = 1; // 1 for condition-less models, or set in getConditions()
+  std::vector<ConditionDependentParams> m_conditionalData; // .size() == m_numConditions
 
   std::array<uint8_t, MAX_CH> m_functn; // value is the index of std::array<std::string, NUMBER_OF_FUNCTIONS>, i.e. < 33
 
@@ -146,9 +144,9 @@ public: // TODO: switch to private
   };
 
   std::vector<uint8_t> m_data;
-  eTxType      m_txType     = eTxType::INVALID_TX;
-  eModulation  m_modulation = eModulation::INVALID;
-  eModelType   m_modelType  = eModelType::INVALID_MODEL;
+  TxType       m_txType     = TxType::INVALID_TX;
+  Modulation   m_modulation = Modulation::INVALID;
+  ModelType    m_modelType  = ModelType::INVALID_MODEL;
   std::wstring m_modelName  = L"UNKNOWN";
 
 public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -175,7 +173,7 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     return m_modelName;
   }
 
-  [[nodiscard]] eModulation getModulation() const noexcept {
+  [[nodiscard]] Modulation getModulation() const noexcept {
     return m_modulation;
   }
 
@@ -189,7 +187,7 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 private:
   [[nodiscard]] inline bool isT18SZ() const noexcept { // TODO: replace everywhere
-    return (m_txType == eTxType::T18SZ);
+    return (m_txType == TxType::T18SZ);
   }
 
   void process() {
@@ -199,7 +197,7 @@ private:
     const char* p = reinterpret_cast<const char*>(&m_data.front());
     constexpr size_t TX_ID_LENGTH = 8;
     if (std::string_view{ p, TX_ID_LENGTH } == "T18SZ   "s) {
-      m_txType = eTxType::T18SZ;
+      m_txType = TxType::T18SZ;
     } else {
       std::array<char, TX_ID_LENGTH>  buffer;
       for (size_t i = 0, j = 2; i < TX_ID_LENGTH; ++i, j += 2) {
@@ -207,46 +205,46 @@ private:
       }
       std::string_view txTypeName{ buffer.data(), TX_ID_LENGTH };
       if (txTypeName == "T8FG    "s) {
-        m_txType = eTxType::T8FG;
+        m_txType = TxType::T8FG;
       } else if (txTypeName == "T14SG   "s) {
-        m_txType = eTxType::T14SG;
+        m_txType = TxType::T14SG;
       } else {
         assert(!"Unknown TX type");
       }
     }
 
     // Read model type
-    const size_t i = (m_txType == eTxType::T18SZ) ? 93 : 152;
+    const size_t i = (m_txType == TxType::T18SZ) ? 93 : 152;
     const uint8_t v = m_data.at(i + 1) / 16;
-    m_modelType = (v > to_ut(eModelType::Multi))? eModelType::INVALID_MODEL : static_cast<eModelType>(v);
+    m_modelType = (v > to_ut(ModelType::Multi))? ModelType::INVALID_MODEL : static_cast<ModelType>(v);
     m_wingType = m_data.at(i) & 0x0F;
     m_tailType = (m_data.at(i) & 0x30) >> 4;
 
     // Read modulation
     const size_t am = isT18SZ()? 92 : 154;
-    if (m_txType == eTxType::T8FG) {
+    if (m_txType == TxType::T8FG) {
       const auto w = ((m_data.at(am) & 0x30) + (m_data.at(am + 1) & 0x80)) >> 4;
       switch (w) {
-      case 1: m_modulation = eModulation::FASST_MULTI; break;
-      case 3: m_modulation = eModulation::FASST_7CH;   break;
-      case 9: m_modulation = eModulation::FASST_MLT2;  break;
+      case 1: m_modulation = Modulation::FASST_MULTI; break;
+      case 3: m_modulation = Modulation::FASST_7CH;   break;
+      case 9: m_modulation = Modulation::FASST_MLT2;  break;
       }
     } else {
-      const size_t dm = (m_txType == eTxType::T18SZ) ? 16 : 1;
-      m_modulation = static_cast<eModulation>((m_data.at(am) / dm) & 0x0F);
+      const size_t dm = (m_txType == TxType::T18SZ) ? 16 : 1;
+      m_modulation = static_cast<Modulation>((m_data.at(am) / dm) & 0x0F);
     }
 
-    // Get everything else
-    getSystemInfo();
-    getFunction();
-    getServoRevers();
-    getEndPoints();
-    getServoSpeed();
-    getSubTrim();
-    getFailSafe();
-    getConditions();
-    getControlAssignment();
-    conditionSelect();
+    // Read everything else
+    readSystemInfo();
+    readFunction();
+    readServoRevers();
+    readEndPoints();
+    readServoSpeed();
+    readSubTrim();
+    readFailSafe();
+    readConditions();
+    readControlAssignment();
+    readConditionSelect();
   } // process()
 
   std::wstring readModelName() const noexcept {
@@ -268,34 +266,33 @@ private:
     return std::wstring{ buffer.data(), i };
   }
 
-  void getFunction()
+  void readFunction()
   {
     const size_t addr14Func = 178, addr18Func = 102;
 
     size_t numChannels, addr;
-    if (m_txType == eTxType::T18SZ) {
+    if (m_txType == TxType::T18SZ) {
       numChannels = t18Channels; addr = addr18Func;
-    }
-    else {
+    } else {
       numChannels = t14Channels; addr = addr14Func;
     }
     for (size_t i = 0; i < numChannels; ++i) {
       m_functn[i] = m_data.at(addr + i);
     }
     switch (m_modelType) {
-    case eModelType::Plane:
-    case eModelType::Glider: m_fa = FUNCTIONS_AIR;   break;
-    case eModelType::Heli:   m_fa = FUNCTIONS_HELI;  break;
-    case eModelType::Multi:  m_fa = FUNCTIONS_MULTI; break;
-    case eModelType::INVALID_MODEL: assert(!"Invalid model type"); break;
+    case ModelType::Plane:
+    case ModelType::Glider: m_fa = FUNCTIONS_AIR;   break;
+    case ModelType::Heli:   m_fa = FUNCTIONS_HELI;  break;
+    case ModelType::Multi:  m_fa = FUNCTIONS_MULTI; break;
+    case ModelType::INVALID_MODEL: assert(!"Invalid model type"); break;
     }
-    if (m_txType != eTxType::T18SZ && m_modelType == eModelType::Plane) {
+    if (m_txType != TxType::T18SZ && m_modelType == ModelType::Plane) {
       m_fa[25] = "VPP"s;
       return;
     }
   }
 
-  void getConditions()
+  void readConditions()
   {
     const size_t addr14CondSelect = /*464*/451, addr18CondSelect = 64;
     const size_t addr14CondName = 1700, addr18CondName = 28140;
@@ -304,38 +301,38 @@ private:
     for (size_t i = 0; i < t18Conditions; ++i) {
       m_conditionName[i] = L""; m_conditionState[i] = 0; m_conditionHw[i] = static_cast<size_t>(-1) /*hwOff*/; m_conditionList[i] = 0;
     }
-    numConditions = 1;
+    m_numConditions = 1;
     m_conditionState[0] = 128 + 15;
     m_conditionList[0] = 0;
 
     // Get names of the conditions
-    const size_t numTxConditions = (m_txType == eTxType::T18SZ) ? t18Conditions : t14Conditions;
-    if (m_txType == eTxType::T8FG) {
+    const size_t numTxConditions = (m_txType == TxType::T18SZ) ? t18Conditions : t14Conditions;
+    if (m_txType == TxType::T8FG) {
       switch (m_modelType) {
-      case eModelType::Heli:   m_conditionName[0] = L"NORMAL";   m_conditionName[1] = L"IDLEUP1"; m_conditionName[2] = L"IDLEUP2";
+      case ModelType::Heli:   m_conditionName[0] = L"NORMAL";   m_conditionName[1] = L"IDLEUP1"; m_conditionName[2] = L"IDLEUP2";
         m_conditionName[3] = L"IDLEUP3";  m_conditionName[4] = L"HOLD";
-        numConditions = 5;
+        m_numConditions = 5;
         break;
-      case eModelType::Glider: m_conditionName[0] = L"NORMAL";   m_conditionName[1] = L"START"; m_conditionName[2] = L"SPEED";
+      case ModelType::Glider: m_conditionName[0] = L"NORMAL";   m_conditionName[1] = L"START"; m_conditionName[2] = L"SPEED";
         m_conditionName[3] = L"DISTANCE"; m_conditionName[4] = L"LANDING";
-        numConditions = 5;
+        m_numConditions = 5;
         break;
-      case eModelType::INVALID_MODEL: assert(!"Invalid model type"); break;
+      case ModelType::INVALID_MODEL: assert(!"Invalid model type"); break;
       default: break; // do nothing
       }
     }
     else // T18SZ or T14SZ
     {
-      if (m_txType == eTxType::T18SZ || m_modelType == eModelType::Heli || m_modelType == eModelType::Glider)
+      if (m_txType == TxType::T18SZ || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider)
       {
-        numConditions = numTxConditions;
+        m_numConditions = numTxConditions;
         for (size_t condIdx = 0; condIdx < numTxConditions; ++condIdx)
         {
           std::array<wchar_t, 8 + 1> buffer;
           buffer.fill(0);
           for (size_t charIdx = 0; charIdx < 8; ++charIdx)
           {
-            if (m_txType == eTxType::T18SZ) { // UTF16
+            if (m_txType == TxType::T18SZ) { // UTF16
               const char hi = static_cast<char>(m_data.at(addr18CondName + condIdx * addr18CondNameOffset + charIdx * 2));
               const char lo = static_cast<char>(m_data.at(addr18CondName + condIdx * addr18CondNameOffset + charIdx * 2 + 1));
               buffer[charIdx] = static_cast<wchar_t>((hi << 8) + lo);
@@ -354,12 +351,12 @@ private:
     }
 
     // <<< DEBUG : The following code doesn't make sense (although seems to work)...
-    if (m_txType == eTxType::T18SZ || m_modelType == eModelType::Heli || m_modelType == eModelType::Glider)
+    if (m_txType == TxType::T18SZ || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider)
     {
       std::array<size_t, t18Conditions> cp;
       cp.fill(0);
 
-      const size_t addr = (m_txType == eTxType::T18SZ) ? addr18CondSelect : addr14CondSelect;
+      const size_t addr = (m_txType == TxType::T18SZ) ? addr18CondSelect : addr14CondSelect;
       for (size_t i = 1; i < numTxConditions; ++i) {
         const uint8_t v = m_data.at(addr + (i - 1) * 4);
         const uint8_t m = v & 0x0F;
@@ -423,11 +420,11 @@ private:
   }
 
 
-  void conditionSelect()
+  void readConditionSelect()
   {
     auto logicSwitch = [this](size_t a) -> std::string {
       const size_t addr14logSw = 328, addr18logSw = 456;
-      const size_t aa = (m_txType == eTxType::T18SZ) ? addr18logSw : addr14logSw;
+      const size_t aa = (m_txType == TxType::T18SZ) ? addr18logSw : addr14logSw;
       if ((m_data.at(a) & 48) == 48)
       {
         auto hw = getHardware(aa + (m_data.at(a) & 0x07U) * 6U);
@@ -456,14 +453,14 @@ private:
       }
     };
 
-    for (size_t i = 1; i < numConditions; ++i) {
+    for (size_t i = 1; i < m_numConditions; ++i) {
       if (m_conditionList[i] != 0) {
         m_conditionalData[i].conditionControl = logicSwitch(m_conditionHw[m_conditionList[i]]);
       }
     }
   }
 
-  void getServoRevers()
+  void readServoRevers()
   {
     m_reversed.fill(false);
     m_reversedDG.fill(false);
@@ -471,7 +468,7 @@ private:
     const size_t addr14RevLo = 268, addr14RevHi = 165, addr14RevDg = 154;
     const size_t addr18RevLo = 252, addr18RevHi = 253, addr18RevDg = 518;
 
-    const bool isT18SZ = (m_txType == eTxType::T18SZ);
+    const bool isT18SZ = (m_txType == TxType::T18SZ);
     const uint8_t  revLo = m_data.at((isT18SZ) ? addr18RevLo : addr14RevLo);
     const uint16_t revHi = m_data.at((isT18SZ) ? addr18RevHi : addr14RevHi);
     const uint8_t  revDg = m_data.at((isT18SZ) ? addr18RevDg : addr14RevDg) & 0xC0;
@@ -485,7 +482,7 @@ private:
     m_reversedDG[1] = (revDg & 0x80) != 0;
   }
 
-  void getEndPoints()
+  void readEndPoints()
   {
     m_travelLo.fill(0); m_travelHi.fill(0);
     m_limitLo.fill(0); m_limitHi.fill(0);
@@ -494,7 +491,7 @@ private:
     const size_t addr14LimLo = 664, addr14LimHi = 714, addr18LimLo = 278, addr18LimHi = 570;
 
     size_t atl, ath, ln, all, alh;
-    const bool isT18SZ = (m_txType == eTxType::T18SZ);
+    const bool isT18SZ = (m_txType == TxType::T18SZ);
     if (isT18SZ) {
       atl = addr18TrlLo; ath = addr18TrlHi; ln = t18ChannelsLow;
       all = addr18LimLo; alh = addr18LimHi;
@@ -512,12 +509,12 @@ private:
     }
   }
 
-  void getServoSpeed()
+  void readServoSpeed()
   {
     m_sSpeed.fill(0);
 
     const size_t addr14sSpLo = 1812, addr14sSpHi = 1828, addr18sSpLo = 438, addr18sSpHi = 594;
-    const bool isT18SZ = (m_txType == eTxType::T18SZ);
+    const bool isT18SZ = (m_txType == TxType::T18SZ);
     size_t al, ah, ln, k;
     if (isT18SZ) {
       al = addr18sSpLo; ah = addr18sSpHi; ln = t18ChannelsLow; k = 1;
@@ -532,12 +529,12 @@ private:
     }
   }
 
-  void getSubTrim()
+  void readSubTrim()
   {
     m_sTrim.fill(0);
 
     const size_t  addr14sTrLo = 306, addr14sTrHi = 166, addr18sTrLo = 414, addr18sTrHi = 586;
-    const bool isT18SZ = (m_txType == eTxType::T18SZ);
+    const bool isT18SZ = (m_txType == TxType::T18SZ);
     size_t al, ah, ln;
     if (isT18SZ) {
       al = addr18sTrLo; ah = addr18sTrHi; ln = t18ChannelsLow;
@@ -554,7 +551,7 @@ private:
     }
   }
 
-  void getControlAssignment()
+  void readControlAssignment()
   {
     const size_t addr18CondStart = 640, t18CondLength = 3056, addr18fnXC = 118;
     const size_t addr14fnGrBfly = 1545, addr14fnGrCamb = 1453, addr14fnGrMot = 1539;
@@ -565,13 +562,13 @@ private:
     const size_t addr14fnTCn = 260, addr14fnTMd = 260, addr14fnTMr = 262;
     const size_t addr18fnTCn = 214, addr18fnTMd = 218, addr18fnTMr = 222;
 
-    assert(numConditions > 0);
-    m_conditionalData.resize(numConditions);
+    assert(m_numConditions > 0);
+    m_conditionalData.resize(m_numConditions);
 
-    const bool isT18SZ = (m_txType == eTxType::T18SZ);
+    const bool isT18SZ = (m_txType == TxType::T18SZ);
 
     // Control assignments for each condition
-    for (size_t condIdx = 0; condIdx < numConditions; ++condIdx)
+    for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx)
     {
       auto& cd = m_conditionalData.at(condIdx);
       if (isT18SZ)
@@ -589,7 +586,7 @@ private:
         static const std::array<size_t, 3> ag = { addr14fnGrBfly, addr14fnGrCamb, addr14fnGrMot };
         for (size_t i = 0; i < t14Channels; ++i) {
           size_t a2 = addr14fnCtrl + m_data.at(addr14fnXC + m_functn[i]);
-          if (m_functn[i] >= 22 && m_functn[i] <= 24 && m_modelType == eModelType::Glider) {
+          if (m_functn[i] >= 22 && m_functn[i] <= 24 && m_modelType == ModelType::Glider) {
             const size_t a1 = ag[m_functn[i] - 22U];
             if (m_data.at(a1) > 127) {
               a2 = a1 + m_conditionList[condIdx] + 1;
@@ -668,27 +665,27 @@ private:
       }
       const uint8_t m = static_cast<uint8_t>(1 << (x % 8U));
       if ((m_data.at(atc + x / 8) & m) == 0 && (m_data.at(atm + x / 8) & m) == 0) {
-        m_trimMode[chIdx] = eTrimMode::Normal;
+        m_trimMode[chIdx] = TrimMode::Normal;
       }
       else {
         if (m_data.at(atm + x / 8) & m) {
-          m_trimMode[chIdx] = (m_data.at(atr + x / 8) & m) ? eTrimMode::ATLRev : eTrimMode::ATLNorm;
+          m_trimMode[chIdx] = (m_data.at(atr + x / 8) & m) ? TrimMode::ATLRev : TrimMode::ATLNorm;
         }
         else {
-          m_trimMode[chIdx] = eTrimMode::Center;
+          m_trimMode[chIdx] = TrimMode::Center;
         }
       }
     }
   }
 
-  void getFailSafe()
+  void readFailSafe()
   {
     const size_t addr14fsLo = 269, addr14fsHi = 697, addr18fsLo = 334, addr18fsHi = 335;
     const size_t addr14bfsLo = 286, addr14bfsHi = 164, addr18bfsLo = 360, addr18bfsHi = 361;
     const size_t addr14fsPosLo = 270, addr14fsPosHi = 698, addr18fsPosLo = 336, addr18fsPosHi = 578;
     const size_t addr14relBFS = 287, addr18relBFS = 362;
 
-    const bool isT18SZ = (m_txType == eTxType::T18SZ);
+    const bool isT18SZ = (m_txType == TxType::T18SZ);
     m_FSMode = (m_data.at((isT18SZ) ? addr18fsHi : addr14fsHi) << 8) + m_data.at((isT18SZ) ? addr18fsLo : addr14fsLo);
     m_FSBattery = (m_data.at((isT18SZ) ? addr18bfsHi : addr14bfsHi) << 8) + m_data.at((isT18SZ) ? addr18bfsLo : addr14bfsLo);
 
@@ -711,7 +708,7 @@ private:
     m_releaseBfsHW = hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
   }
 
-  void getSystemInfo() {
+  void readSystemInfo() {
     auto getRxID = [this](size_t a) -> uint32_t { 
       return static_cast<uint32_t>((m_data.at(a) << 24) | (m_data.at(a + 1) << 16) | (m_data.at(a + 2) << 8) | m_data.at(a + 3)); 
     };
@@ -736,7 +733,7 @@ private:
     const size_t addr18bfsvRx1 = 401, addr18bfsvRx2 = 402;
 
     size_t aa, ar, ai1, ai2, ata, mta, adl, ddl, av1, av2, mr;
-    if (m_txType == eTxType::T18SZ) {
+    if (m_txType == TxType::T18SZ) {
       aa = addr18sysAr; ar = addr18rxQty; ai1 = addr18IDRx1; ai2 = addr18IDRx2; ata = addr18tAct; mta = mask18tAct;
       adl = addr18dlI; ddl = div18dlI; av1 = addr18bfsvRx1; av2 = addr18bfsvRx2; mr = mask18rxQty;
     }
@@ -747,7 +744,7 @@ private:
     m_sysTelemAct = (m_data.at(ata) & mta) != 0;
     const size_t sysModulation = to_ut(m_modulation);
     if (isT18SZ()) { // && (sysModulation & 0x03) != 0) { // i.e. "FASST MULTI" or "FASST MLT2" // <<< DEBUG correct?
-      m_Area = ((m_data.at(aa) & 0x80) == 0) ? eAreaType::General : eAreaType::France;
+      m_Area = ((m_data.at(aa) & 0x80) == 0) ? Geo::General : Geo::France;
     }
     if (TELEMETRY_TYPE[sysModulation] != 0) {
       m_singleRX = (m_data.at(ar) & mr) == 0 || sysModulation == 10; // "FASSTest 12CH" // <<< DEBUG correct?
@@ -812,12 +809,12 @@ int main(int argc, char* argv[])
     Model m{ std::filesystem::path(fname) };
     if (!m.empty())
     {
-      std::cout << "TX: " << ((m.m_txType == Model::eTxType::INVALID_TX) ? "INVALID"
+      std::cout << "TX: " << ((m.m_txType == Model::TxType::INVALID_TX) ? "INVALID"
         : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[to_ut(m.m_txType)]) << std::endl;
 
       std::wcout << L"Model name: \"" << m.getModelName() << L"\"" << std::endl;
 
-      std::cout << "Model: " << ((m.m_modelType == Model::eModelType::INVALID_MODEL) ? "INVALID"
+      std::cout << "Model: " << ((m.m_modelType == Model::ModelType::INVALID_MODEL) ? "INVALID"
         : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[to_ut(m.m_modelType)]) << "\n\n";
 
       const auto modulation = to_ut(m.getModulation());
@@ -827,7 +824,7 @@ int main(int argc, char* argv[])
                                          "T-FHSS",        "--",          "--",            "--" };
       std::cout << "SYSTEM" << std::endl;
       std::cout << "\t" << modulationList[modulation] << "  " << ((m.m_singleRX) ? "SINGLE" : "DUAL") << " "
-        << ((m.m_Area == Model::eAreaType::UNKNOWN) ? "" : (m.m_Area == Model::eAreaType::General ? "G" : "F")) << std::endl;
+        << ((m.m_Area == Model::Geo::UNKNOWN) ? "" : (m.m_Area == Model::Geo::General ? "G" : "F")) << std::endl;
       std::cout << "\t" << m.m_RX[0].ID;
       if (!m.m_singleRX) { std::cout << "\t\t" << m.m_RX[1].ID; }
       std::cout << std::endl;
@@ -839,7 +836,7 @@ int main(int argc, char* argv[])
 
 
       std::cout << "Reverse & End Point" << std::endl;
-      const size_t numChannels = (m.m_txType == Model::eTxType::T18SZ) ? Model::t18Channels : Model::t14Channels;
+      const size_t numChannels = (m.m_txType == Model::TxType::T18SZ) ? Model::t18Channels : Model::t14Channels;
       for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
         std::cout << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m.m_fa[m.m_functn[chIdx]] << ": "
           << ((m.m_reversed[chIdx]) ? "REVERSED" : "normal  ") << "  "
@@ -874,18 +871,18 @@ int main(int argc, char* argv[])
       }
       std::cout << "\tRelease battery F/S: " << m.m_releaseBfsHW << std::endl;
 
-      if (m.m_txType == Model::eTxType::T18SZ || m.m_modelType == Model::eModelType::Heli || m.m_modelType == Model::eModelType::Glider) {
+      if (m.m_txType == Model::TxType::T18SZ || m.m_modelType == Model::ModelType::Heli || m.m_modelType == Model::ModelType::Glider) {
         std::cout << "Condition #" << std::endl;
-        for (size_t condIdx = 0; condIdx < m.numConditions; ++condIdx) {
+        for (size_t condIdx = 0; condIdx < m.m_numConditions; ++condIdx) {
           std::wcout << L"\t" << condIdx + 1 << L": " << m.m_conditionName[condIdx];
           std::cout << "  " << m.m_conditionalData[condIdx].conditionControl << std::endl;
         }
       }
 
       std::cout << "Function" << std::endl;
-      for (size_t condIdx = 0; condIdx < m.numConditions; ++condIdx)
+      for (size_t condIdx = 0; condIdx < m.m_numConditions; ++condIdx)
       {
-        if (m.numConditions > 1) {
+        if (m.m_numConditions > 1) {
           std::wcout << L"    Condition #" << condIdx + 1 << L": " << m.m_conditionName[condIdx] << std::endl;
         }
 
