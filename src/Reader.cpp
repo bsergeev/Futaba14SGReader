@@ -97,7 +97,6 @@ private:
   static const size_t maxConds = std::max(t14Conditions, t18Conditions);
   static const size_t NUMBER_OF_FUNCTIONS = 33;
 
-  static const std::array<const char*, NO_CONTROL_IDX+1> hwCtrlDesc;
 
   uint8_t     m_wingType  = 0;
   uint8_t     m_tailType  = 0;
@@ -129,14 +128,14 @@ private:
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_AIR;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_HELI;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_MULTI;
- 
+  static const std::array<std::string, NO_CONTROL_IDX + 1>  SWITCH_NAME;
   static const std::array<uint8_t, 16> TELEMETRY_TYPE;
   static const std::array<double,  16> TFHSS_VOLT_LIST;
 
   std::array<std::wstring, t18Conditions> m_conditionName;
-  std::array<size_t, t18Conditions> m_conditionState, m_conditionList;
-  std::array<size_t, t18Conditions> m_conditionHw;
-  std::array<std::string, 2> m_digiCtrl;
+  std::array<size_t,       t18Conditions> m_conditionState, m_conditionList;
+  std::array<size_t,       t18Conditions> m_conditionHw;
+  std::array<std::string,  2> m_digiCtrl;
 
   struct HwNamnes {
     int8_t Type = -1;
@@ -274,7 +273,7 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
           out << "\t # Function  Ctrl Trim Rate  Mode" << std::endl;
           for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
             out << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m_funcName[m_functn[chIdx]] << ": "
-              << std::right << hwCtrlDesc[cd.control[chIdx]] << "  " << hwCtrlDesc[m_trim[chIdx]]
+              << std::right << SWITCH_NAME[cd.control[chIdx]] << "  " << SWITCH_NAME[m_trim[chIdx]]
               << "  " << std::showpos << m_trimRate[chIdx] << "%  "
               << std::array<std::string, 5>{ {"?", "Normal", "ATL Revers", "ATL Norm", "Center"}}[static_cast<size_t>(to_ut(m_trimMode[chIdx]) % 5U)]
               << std::endl;
@@ -293,7 +292,7 @@ private:
   [[nodiscard]] static constexpr uint8_t cServoSpeed(uint8_t y) noexcept {
     if (y < 67) { return static_cast<uint8_t>(y / 10.0 + 0.5); }
     if (y < 78) { return static_cast<uint8_t>((y - 67) / 4.0 + 0.5) + 0x07U; }
-    if (y == 78) { return 10; } // y - 68;
+    if (y ==78) { return 10; } // y - 68;
     if (y < 88) { return static_cast<uint8_t>((y - 80) / 3.0 + 0.5) + 0x0BU; }
     return  static_cast<uint8_t>(y - 74);
   }
@@ -401,21 +400,16 @@ private:
     }
   }
 
-  void readConditions()
-  {
-    const size_t addr14CondSelect = /*464*/451, addr18CondSelect = 64;
-    const size_t addr14CondName = 1700, addr18CondName = 28140;
-    const size_t addr14CondNameOffset = 9, addr18CondNameOffset = 578;
-
+  void readConditions() {
     for (size_t i = 0; i < t18Conditions; ++i) {
       m_conditionName[i] = L""; m_conditionState[i] = 0; m_conditionHw[i] = static_cast<size_t>(-1) /*hwOff*/; m_conditionList[i] = 0;
     }
     m_numConditions = 1;
     m_conditionState[0] = 128 + 15;
-    m_conditionList[0] = 0;
+    m_conditionList [0] = 0;
 
     // Get names of the conditions
-    const size_t numTxConditions = (m_txType == TxType::T18SZ) ? t18Conditions : t14Conditions;
+    const size_t numTxConditions = (isT18SZ())? t18Conditions : t14Conditions;
     if (m_txType == TxType::T8FG) {
       switch (m_modelType) {
       case ModelType::Heli:   m_conditionName[0] = L"NORMAL";   m_conditionName[1] = L"IDLEUP1"; m_conditionName[2] = L"IDLEUP2";
@@ -429,25 +423,19 @@ private:
       case ModelType::INVALID: assert(!"Invalid model type"); break;
       default: break; // do nothing
       }
-    }
-    else // T18SZ or T14SZ
-    {
-      if (m_txType == TxType::T18SZ || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider)
-      {
+    } else { // T18SZ or T14SZ
+      if (m_txType == TxType::T18SZ || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider) {
         m_numConditions = numTxConditions;
-        for (size_t condIdx = 0; condIdx < numTxConditions; ++condIdx)
-        {
+        for (size_t condIdx = 0; condIdx < numTxConditions; ++condIdx) {
           std::array<wchar_t, 8 + 1> buffer;
           buffer.fill(0);
-          for (size_t charIdx = 0; charIdx < 8; ++charIdx)
-          {
+          for (size_t charIdx = 0; charIdx < 8; ++charIdx) {
             if (m_txType == TxType::T18SZ) { // UTF16
-              const char hi = static_cast<char>(m_data.at(addr18CondName + condIdx * addr18CondNameOffset + charIdx * 2));
-              const char lo = static_cast<char>(m_data.at(addr18CondName + condIdx * addr18CondNameOffset + charIdx * 2 + 1));
+              const char hi = static_cast<char>(m_data.at(28140 + condIdx * 578 + charIdx * 2));
+              const char lo = static_cast<char>(m_data.at(28140 + condIdx * 578 + charIdx * 2 + 1));
               buffer[charIdx] = static_cast<wchar_t>((hi << 8) + lo);
-            }
-            else { // T14SZ, 1-byte
-              buffer[charIdx] = m_data.at(addr14CondName + condIdx * addr14CondNameOffset + charIdx);
+            } else { // T14SZ, 1-byte
+              buffer[charIdx] = m_data.at(1700 + condIdx * 9 + charIdx);
             }
 
             if (buffer[charIdx] == 0) {
@@ -465,7 +453,7 @@ private:
       std::array<size_t, t18Conditions> cp;
       cp.fill(0);
 
-      const size_t addr = (m_txType == TxType::T18SZ) ? addr18CondSelect : addr14CondSelect;
+      const size_t addr = (isT18SZ())? 64 : /*464*/451;
       for (size_t i = 1; i < numTxConditions; ++i) {
         const uint8_t v = m_data.at(addr + (i - 1) * 4);
         const uint8_t m = v & 0x0F;
@@ -507,7 +495,7 @@ private:
       hw.Ctrl = "Logic"; 
       return hw; 
     }
-    hw.Ctrl = hwCtrlDesc[hC];
+    hw.Ctrl = SWITCH_NAME[hC];
     if ((hC & 0x34) == 4) {
       if ((hC & 0x37) == 7) {
         hw.Type = 2; // 2-position switch
@@ -642,17 +630,7 @@ private:
     }
   }
 
-  void readControlAssignment()
-  {
-    const size_t addr18CondStart = 640, t18CondLength = 3056, addr18fnXC = 118;
-    const size_t addr14fnGrBfly = 1545, addr14fnGrCamb = 1453, addr14fnGrMot = 1539;
-    const size_t addr14fnXC = 190, addr14fnCtrl = 222, addr14fnTrim = 234;
-    const size_t addr18fnTRt = 182, addr18fnTSg = 519;
-    const size_t addr14fnTRt = 246, addr14fnTSg = 258;
-    const size_t addr18dgCtrl = 450, addr14dgCtrl = 322, addr14dgAlt = 681;
-    const size_t addr14fnTCn = 260, addr14fnTMd = 260, addr14fnTMr = 262;
-    const size_t addr18fnTCn = 214, addr18fnTMd = 218, addr18fnTMr = 222;
-
+  void readControlAssignment() {
     assert(m_numConditions > 0);
     m_conditionalData.resize(m_numConditions);
 
@@ -662,7 +640,7 @@ private:
     for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx) {
       auto& cd = m_conditionalData.at(condIdx);
       if (isT18) {
-        const size_t  ac = addr18CondStart, lc = t18CondLength, axc = addr18fnXC;
+        const size_t  ac = 640, lc = 3056, axc = 118;
         for (size_t i = 0; i < t18Channels; ++i) {
           size_t a1 = axc + m_functn[i];
           size_t a2 = ac + lc * (m_conditionList[condIdx]) + m_data.at(a1);
@@ -672,9 +650,9 @@ private:
           m_trim[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2)); // <<< DEBUG move out of condIdx loop!
         }
       } else {
-        static const std::array<size_t, 3> ag = { addr14fnGrBfly, addr14fnGrCamb, addr14fnGrMot };
+        static const std::array<size_t, 3> ag = { 1545, 1453, 1539 };
         for (size_t i = 0; i < t14Channels; ++i) {
-          size_t a2 = addr14fnCtrl + m_data.at(addr14fnXC + m_functn[i]);
+          size_t a2 = 222 + m_data.at(190 + m_functn[i]);
           if (m_functn[i] >= 22 && m_functn[i] <= 24 && m_modelType == ModelType::Glider) {
             const size_t a1 = ag[m_functn[i] - 22U];
             if (m_data.at(a1) > 127) {
@@ -682,7 +660,7 @@ private:
             }
           }
           cd.control[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2));
-          a2 = addr14fnTrim + m_data.at(addr14fnXC + m_functn[i]);
+          a2 = 234 + m_data.at(190 + m_functn[i]);
           m_trim[i] = std::min<hwCtrlIdx>(NO_CONTROL_IDX, m_data.at(a2)); // <<< DEBUG move out of condIdx loop!
         }
       }
@@ -690,12 +668,10 @@ private:
 
     // Controls for DGs (same for all conditions)
     const std::string ls = " ";
-    for (size_t ch = 0; ch < 2; ++ch)
-    {
-      if (isT18)
-      {
-        if ((m_data.at(addr18dgCtrl + ch * 3) & 48) == 48)
-        {
+    for (size_t ch = 0; ch < 2; ++ch) {
+      if (isT18) {
+        const size_t addr18dgCtrl = 450;
+        if ((m_data.at(addr18dgCtrl + ch * 3) & 48) == 48) {
           auto hw = getHardware(addr18dgCtrl + ((m_data.at(addr18dgCtrl + ch * 3) & 0x07U) + 1U) * 6U);
           std::string alt = hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
           if (m_data.at(addr18dgCtrl + ch * 3 + 1) & 128) {
@@ -715,15 +691,14 @@ private:
             alt = alt + " Alternate";
           }
           m_digiCtrl[ch] = alt;
-        }
-        else {
+        } else {
           auto hw = getHardware(addr18dgCtrl + ch * 3);
           m_digiCtrl[ch] = ls + hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
         }
       } else { // <<< DEBUG TBD: handle 'Logic' for 14SG
         const uint8_t m = static_cast<uint8_t>(1U << ch);
-        std::string alt = (m_data.at(addr14dgAlt) & m) ? "Alternate" : "";
-        auto hw = getHardware(addr14dgCtrl + ch * 3);
+        std::string alt = (m_data.at(681) & m) ? "Alternate" : "";
+        auto hw = getHardware(322 + ch * 3);
         m_digiCtrl[ch] = ls + hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym + "  " + alt;
       }
     }
@@ -733,9 +708,9 @@ private:
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
       size_t atr, ats, x;
       if (isT18) {
-        atr = addr18fnTRt; ats = addr18fnTSg; x = m_functn[chIdx];
+        atr = 182; ats = 519; x = m_functn[chIdx];
       } else {
-        atr = addr14fnTRt; ats = addr14fnTSg; x = m_data.at(addr14fnXC + m_functn[chIdx]);
+        atr = 246; ats = 258; x = m_data.at(190 + m_functn[chIdx]);
       }
       const uint8_t m = static_cast<uint8_t>(1U << (x % 8));
       auto v = static_cast<int16_t>(m_data.at(atr + x));
@@ -746,9 +721,9 @@ private:
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
       size_t atc, atm, atr, x;
       if (isT18) {
-        atc = addr18fnTCn; atm = addr18fnTMd; atr = addr18fnTMr; x = m_functn[chIdx];
+        atc = 214; atm = 218; atr = 222; x = m_functn[chIdx];
       } else {
-        atc = addr14fnTCn; atm = addr14fnTMd; atr = addr14fnTMr; x = m_data.at(addr14fnXC + m_functn[chIdx]);
+        atc = 260; atm = 260; atr = 262; x = m_data.at(190 + m_functn[chIdx]);
       }
       const uint8_t m = static_cast<uint8_t>(1 << (x % 8U));
       if ((m_data.at(atc + x / 8) & m) == 0 && (m_data.at(atm + x / 8) & m) == 0) {
@@ -826,10 +801,10 @@ private:
 }; // class Model
 
 //static 
-const std::array<const char*, 32> Model::hwCtrlDesc = {
-    "J1", "J2", "J4", "J3", "SC", "SD", "SG", "SH", "RD", "RS",
-    "OA", "0B", "SA", "SB", "SE", "SF", "LD", "11", "LS", "13",
-    "T1", "T2", "T4", "T3", "T5", "T6", "T7", "1B", "1C", "1D", "1E", "--" };
+const std::array<std::string, 32> Model::SWITCH_NAME = {
+    "J1"s, "J2"s, "J4"s, "J3"s, "SC"s, "SD"s, "SG"s, "SH"s, "RD"s, "RS"s,
+    "OA"s, "0B"s, "SA"s, "SB"s, "SE"s, "SF"s, "LD"s, "11"s, "LS"s, "13"s,
+    "T1"s, "T2"s, "T4"s, "T3"s, "T5"s, "T6"s, "T7"s, "1B"s, "1C"s, "1D"s, "1E"s, "--"s };
 const std::array<std::string, Model::NUMBER_OF_FUNCTIONS> Model::FUNCTIONS_AIR = {
     "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
     "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s,
