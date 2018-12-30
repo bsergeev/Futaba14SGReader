@@ -95,7 +95,14 @@ private:
   static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
   static const size_t t14Conditions  = 5, t18Conditions = 8;
   static const size_t maxConds = std::max(t14Conditions, t18Conditions);
-  static const size_t NUMBER_OF_FUNCTIONS = 33;
+
+  static const size_t                  NUMBER_OF_FUNCTIONS = 33;
+  static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_AIR;
+  static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_HELI;
+  static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_MULTI;
+  static const std::array<std::string, NO_CONTROL_IDX + 1>  SWITCH_NAME;
+  static const std::array<uint8_t,     16>                  TELEMETRY_TYPE;
+  static const std::array<double,      16>                  TFHSS_VOLT_LIST;
 
 
   uint8_t     m_wingType  = 0;
@@ -123,14 +130,7 @@ private:
   std::vector<ConditionDependentParams> m_conditionalData; // .size() == m_numConditions
 
   std::array<uint8_t, MAX_CH> m_functn; // value is the index of std::array<std::string, NUMBER_OF_FUNCTIONS>, i.e. < 33
-
   std::array<std::string, NUMBER_OF_FUNCTIONS> m_funcName;
-  static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_AIR;
-  static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_HELI;
-  static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_MULTI;
-  static const std::array<std::string, NO_CONTROL_IDX + 1>  SWITCH_NAME;
-  static const std::array<uint8_t, 16> TELEMETRY_TYPE;
-  static const std::array<double,  16> TFHSS_VOLT_LIST;
 
   std::array<std::wstring, t18Conditions> m_conditionName;
   std::array<size_t,       t18Conditions> m_conditionState, m_conditionList;
