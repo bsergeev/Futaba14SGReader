@@ -91,10 +91,10 @@ public:
   };
 
 private:
-  static const size_t t14Channels   = 12, t18Channels = 16;
+  static const size_t t14Channels   = 12, t18Channels    = 16;
   static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
   static const size_t t14Conditions  = 5, t18Conditions = 8;
-  static const size_t maxConds = std::max(t14Conditions, t18Conditions);
+  static const size_t MAX_CONDITNS = std::max(t14Conditions, t18Conditions);
 
   static const size_t                  NUMBER_OF_FUNCTIONS = 33;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_AIR;
@@ -126,15 +126,15 @@ private:
   std::array<TrimMode,  MAX_CH> m_trimMode;
   std::array<RxInfo,    2>      m_RX;
 
-  size_t m_numConditions = 1; // 1 for condition-less models, or set in getConditions()
+  size_t m_numConditions = 1; // 1 for condition-less models, or set in getConditions(): up to 5 for 14SG or 8 for 18SZ
   std::vector<ConditionDependentParams> m_conditionalData; // .size() == m_numConditions
 
   std::array<uint8_t, MAX_CH> m_functn; // value is the index of std::array<std::string, NUMBER_OF_FUNCTIONS>, i.e. < 33
   std::array<std::string, NUMBER_OF_FUNCTIONS> m_funcName;
 
-  std::array<std::wstring, t18Conditions> m_conditionName;
-  std::array<size_t,       t18Conditions> m_conditionState, m_conditionList;
-  std::array<size_t,       t18Conditions> m_conditionHw;
+  std::array<std::wstring, MAX_CONDITNS> m_conditionName;
+  std::array<size_t,       MAX_CONDITNS> m_conditionState, m_conditionList;
+  std::array<size_t,       MAX_CONDITNS> m_conditionHw;
   std::array<std::string,  2> m_digiCtrl;
 
   struct HwNamnes {
