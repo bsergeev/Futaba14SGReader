@@ -75,7 +75,7 @@ public:
   inline static const size_t NO_CONTROL_IDX = 31; // GCC 8 requires "inline", WTF? 
 
   static const size_t MAX_CH = 16; // std::max(t14Channels, t18Channels);
-  typedef size_t hwCtrlIdx;
+  using hwCtrlIdx = size_t;
   struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
     bool operator ==(const ConditionDependentParams& o) const {
@@ -154,11 +154,11 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
       const auto file_size = ifs.seekg(0, std::ios_base::end).tellg();
       ifs.seekg(0);
       
-      std::vector<char> data_;
-      data_.resize(static_cast<std::size_t>(file_size));
-      ifs.read(data_.data(), file_size);
+      std::vector<char> data;
+      data.resize(static_cast<std::size_t>(file_size));
+      ifs.read(data.data(), file_size);
       
-      m_data = std::vector<uint8_t>{ begin(data_), end(data_) };
+      m_data = decltype(m_data){ begin(data), end(data) };
 
       process();
     }
@@ -379,20 +379,17 @@ private:
   }
 
   void readFunction() {
-    size_t numChannels, addr;
-    if (isT18SZ()) {
-      numChannels = t18Channels; addr = 102;
-    } else {
-      numChannels = t14Channels; addr = 178;
-    }
+    const auto isT18 = isT18SZ();
+    const size_t numChannels = (isT18)? t18Channels : t14Channels;
+    const size_t addr        = (isT18)? 102         : 178;
     for (size_t i = 0; i < numChannels; ++i) {
       m_functn[i] = m_data.at(addr + i);
     }
     switch (m_modelType) {
-    case ModelType::Plane:
-    case ModelType::Glider: m_funcName = FUNCTIONS_AIR;   break;
-    case ModelType::Heli:   m_funcName = FUNCTIONS_HELI;  break;
-    case ModelType::Multi:  m_funcName = FUNCTIONS_MULTI; break;
+    case ModelType::Plane:  [[fallthrough]];
+    case ModelType::Glider: m_funcName = FUNCTIONS_AIR;     break;
+    case ModelType::Heli:   m_funcName = FUNCTIONS_HELI;    break;
+    case ModelType::Multi:  m_funcName = FUNCTIONS_MULTI;   break;
     case ModelType::INVALID: assert(!"Invalid model type"); break;
     }
     if (!isT18SZ() && m_modelType == ModelType::Plane) {
@@ -474,7 +471,7 @@ private:
           m_conditionList[j] = cp[i];
           j = j + 1;
         }
-        if (i == 0) break;
+        if (i == 0) { break; }
       }
     }
   }
@@ -504,11 +501,11 @@ private:
       }
       hw.Type = 3; // 3 - position switch
       if (hR != 0) { hw.Pos = "ON/OFF/ON";  return hw; }
-      if ((i1 & 0x80) == 0 && i2 >= 0x40) { hw.Pos = "OFF/OFF/ON"; return hw; }
-      if ((i1 & 0x80) != 0 && i2 >= 0x40) { hw.Pos = "ON/OFF/OFF"; return hw; } // was "OFF/ON/ON"
+      if ((i1 & 0x80) == 0 && i2 >= 0x40)   { hw.Pos = "OFF/OFF/ON"; return hw; }
+      if ((i1 & 0x80) != 0 && i2 >= 0x40)   { hw.Pos = "ON/OFF/OFF"; return hw; } // was "OFF/ON/ON"
       if ((i1 <= 0xC0) && (i2 & 0x80) == 0) { hw.Pos = "ON/ON/OFF";  return hw; }
       if ((i1 <= 0xC0) && (i2 & 0x80) != 0) { hw.Pos = "OFF/ON/ON";  return hw; } // was "ON/OFF/OFF"
-      else { hw.Pos = "OFF/ON/OFF"; return hw; }
+      hw.Pos = "OFF/ON/OFF"; return hw;
     }
     hw.Type = 0; // Analog input
     hw.Rev = (hR == 0) ? "Normal" : "Reverse";
@@ -532,7 +529,7 @@ private:
       if ((m_data.at(a) & 48) == 48) {
         auto hw = getHardware(aa + (m_data.at(a) & 0x07U) * 6U);
         std::string alt = hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
-        if (m_data.at(a + 1) & 128) {
+        if ((m_data.at(a + 1) & 128) != 0) {
           alt = alt + " Alternate";
         }
         std::string l;
@@ -545,14 +542,13 @@ private:
         alt = alt + "  " + l + "  ";
         hw = getHardware(aa + (m_data.at(a) & 0x7U) * 6U + 3U);
         alt = alt + hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
-        if (m_data.at(a + 1) & 0x40) {
+        if ((m_data.at(a + 1) & 0x40) != 0) {
           alt = alt + " Alternate";
         }
         return alt;
-      } else {
-        auto hw = getHardware(a);
-        return hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
-      }
+      } // else
+      auto hw = getHardware(a);
+      return hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
     };
 
     for (size_t i = 1; i < m_numConditions; ++i) {
@@ -674,7 +670,7 @@ private:
         if ((m_data.at(addr18dgCtrl + ch * 3) & 48) == 48) {
           auto hw = getHardware(addr18dgCtrl + ((m_data.at(addr18dgCtrl + ch * 3) & 0x07U) + 1U) * 6U);
           std::string alt = hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
-          if (m_data.at(addr18dgCtrl + ch * 3 + 1) & 128) {
+          if ((m_data.at(addr18dgCtrl + ch * 3 + 1) & 128) != 0) {
             alt = alt + " Alternate";
           }
           std::string l;
@@ -687,7 +683,7 @@ private:
           alt = alt + "   " + l + "   ";
           hw = getHardware(addr18dgCtrl + ((m_data.at(addr18dgCtrl + ch * 3U) & 0x07U) + 1U) * 6U + 3U);
           alt = alt + hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
-          if (m_data.at(addr18dgCtrl + ch * 3 + 1) & 0x40) {
+          if ((m_data.at(addr18dgCtrl + ch * 3 + 1) & 0x40) != 0) {
             alt = alt + " Alternate";
           }
           m_digiCtrl[ch] = alt;
@@ -696,8 +692,8 @@ private:
           m_digiCtrl[ch] = ls + hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
         }
       } else { // <<< DEBUG TBD: handle 'Logic' for 14SG
-        const uint8_t m = static_cast<uint8_t>(1U << ch);
-        std::string alt = (m_data.at(681) & m) ? "Alternate" : "";
+        const auto m = static_cast<uint8_t>(1U << ch);
+        std::string alt = ((m_data.at(681) & m) != 0)? "Alternate" : "";
         auto hw = getHardware(322 + ch * 3);
         m_digiCtrl[ch] = ls + hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym + "  " + alt;
       }
@@ -712,7 +708,7 @@ private:
       } else {
         atr = 246; ats = 258; x = m_data.at(190 + m_functn[chIdx]);
       }
-      const uint8_t m = static_cast<uint8_t>(1U << (x % 8));
+      const auto m = static_cast<uint8_t>(1U << (x % 8));
       auto v = static_cast<int16_t>(m_data.at(atr + x));
       m_trimRate[chIdx] = ((m_data.at(ats + x / 8) & m) != 0) ? -v : v;
     }
@@ -725,12 +721,12 @@ private:
       } else {
         atc = 260; atm = 260; atr = 262; x = m_data.at(190 + m_functn[chIdx]);
       }
-      const uint8_t m = static_cast<uint8_t>(1 << (x % 8U));
+      const auto m = static_cast<uint8_t>(1 << (x % 8U));
       if ((m_data.at(atc + x / 8) & m) == 0 && (m_data.at(atm + x / 8) & m) == 0) {
         m_trimMode[chIdx] = TrimMode::Normal;
       } else {
-        if (m_data.at(atm + x / 8) & m) {
-          m_trimMode[chIdx] = (m_data.at(atr + x / 8) & m) ? TrimMode::ATLRev : TrimMode::ATLNorm;
+        if ((m_data.at(atm + x / 8) & m) != 0) {
+          m_trimMode[chIdx] = ((m_data.at(atr + x / 8) & m) != 0)? TrimMode::ATLRev : TrimMode::ATLNorm;
         } else {
           m_trimMode[chIdx] = TrimMode::Center;
         }
@@ -802,33 +798,33 @@ private:
 
 //static 
 const std::array<std::string, 32> Model::SWITCH_NAME = {
-    "J1"s, "J2"s, "J4"s, "J3"s, "SC"s, "SD"s, "SG"s, "SH"s, "RD"s, "RS"s,
-    "OA"s, "0B"s, "SA"s, "SB"s, "SE"s, "SF"s, "LD"s, "11"s, "LS"s, "13"s,
-    "T1"s, "T2"s, "T4"s, "T3"s, "T5"s, "T6"s, "T7"s, "1B"s, "1C"s, "1D"s, "1E"s, "--"s };
+  "J1"s, "J2"s, "J4"s, "J3"s, "SC"s, "SD"s, "SG"s, "SH"s, "RD"s, "RS"s,
+  "OA"s, "0B"s, "SA"s, "SB"s, "SE"s, "SF"s, "LD"s, "11"s, "LS"s, "13"s,
+  "T1"s, "T2"s, "T4"s, "T3"s, "T5"s, "T6"s, "T7"s, "1B"s, "1C"s, "1D"s, "1E"s, "--"s };
 const std::array<std::string, Model::NUMBER_OF_FUNCTIONS> Model::FUNCTIONS_AIR = {
-    "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
-    "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s,
-    "Flap2"s, "Air brake"s, "Fuel mix"s, "Gyro"s, "Gyro2"s,
-    "Gyro3"s, "Throttle2"s, "Throttle3"s, "Throttle4"s, "Flap3"s,
-    "Flap4"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s,
-    "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
-    "Auxiliary2"s, "Auxiliary1"s, "--"s };
+  "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
+  "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s,
+  "Flap2"s, "Air brake"s, "Fuel mix"s, "Gyro"s, "Gyro2"s,
+  "Gyro3"s, "Throttle2"s, "Throttle3"s, "Throttle4"s, "Flap3"s,
+  "Flap4"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s,
+  "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
+  "Auxiliary2"s, "Auxiliary1"s, "--"s };
 const std::array<std::string, Model::NUMBER_OF_FUNCTIONS> Model::FUNCTIONS_HELI = {
-    "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
-    "Pitch"s, "Governor"s, "Governor2"s, "Aileron4"s, "Elevator2"s,
-    "Flap2"s, "Needle"s, "Fuel mix"s, "Gyro"s, "Gyro2"s,
-    "Gyro3"s, "Throttle2"s, "Throttle3"s, "Throttle4"s, "Flap3"s,
-    "Flap4"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Auxiliary8"s,
-    "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
-    "Auxiliary2"s, "Auxiliary1"s, "--"s };
+  "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
+  "Pitch"s, "Governor"s, "Governor2"s, "Aileron4"s, "Elevator2"s,
+  "Flap2"s, "Needle"s, "Fuel mix"s, "Gyro"s, "Gyro2"s,
+  "Gyro3"s, "Throttle2"s, "Throttle3"s, "Throttle4"s, "Flap3"s,
+  "Flap4"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Auxiliary8"s,
+  "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
+  "Auxiliary2"s, "Auxiliary1"s, "--"s };
 const std::array<std::string, Model::NUMBER_OF_FUNCTIONS> Model::FUNCTIONS_MULTI = {
-    "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
-    "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s,
-    "Flap2"s, "Air brake"s, "Fuel mix"s, "Gyro"s, "Gyro2"s,
-    "Gyro3"s, "Camera roll"s, "Camera tilt"s, "Camera pan"s, "Camera rec"s,
-    "Mode"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s,
-    "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
-    "Auxiliary2"s, "Auxiliary1"s, "--"s };
+  "Aileron"s, "Elevator"s, "Throttle"s, "Rudder"s, "Gear"s,
+  "Flap"s, "Aileron2"s, "Aileron3"s, "Aileron4"s, "Elevator2"s,
+  "Flap2"s, "Air brake"s, "Fuel mix"s, "Gyro"s, "Gyro2"s,
+  "Gyro3"s, "Camera roll"s, "Camera tilt"s, "Camera pan"s, "Camera rec"s,
+  "Mode"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s,
+  "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
+  "Auxiliary2"s, "Auxiliary1"s, "--"s };
 const std::array<uint8_t, 16> Model::TELEMETRY_TYPE = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0 };
 const std::array<double,  16> Model::TFHSS_VOLT_LIST = { 3.8, 0.0, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0,
                                                        5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.1, 7.4 };
