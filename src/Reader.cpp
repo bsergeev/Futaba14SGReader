@@ -257,7 +257,7 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
         const auto& cd = m_conditionalData[condIdx];
 
-        const size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
+        constexpr size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
         size_t sameAsCondition = INVALID_INDEX;
         if (condIdx > 0) {
           for (size_t prevCondIdx = 0; prevCondIdx < condIdx; ++prevCondIdx) {
