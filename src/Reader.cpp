@@ -115,7 +115,7 @@ void Model::dump(std::ostream& out, std::wostream& wout) {
 
       val& cd = m_conditionalData[condIdx];
 
-      const size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
+      constexpr size_t INVALID_INDEX = std::numeric_limits<size_t>::max();
       size_t sameAsCondition = INVALID_INDEX;
       if (condIdx > 0) {
         for (size_t prevCondIdx = 0; prevCondIdx < condIdx; ++prevCondIdx) {
@@ -125,6 +125,7 @@ void Model::dump(std::ostream& out, std::wostream& wout) {
           }
         }
       }
+
       if (sameAsCondition != INVALID_INDEX) {
         wout << L"\tSame as condition #" << sameAsCondition + 1 << L" " << m_conditionName[sameAsCondition] << std::endl;
       } else {
