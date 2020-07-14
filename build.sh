@@ -35,7 +35,7 @@ if [ "$OS_NAME" = "Linux" ]; then
   make -j4
   cp -f compile_commands.json ..
 elif [ "$OS_NAME" = "Windows" ]; then
-  cmake -G "Visual Studio 15 2017 Win64" ..
+  cmake ..
   cmake --build . --target ALL_BUILD --config $BUILD_CONFIGURATION
 fi
 

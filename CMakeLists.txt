@@ -12,6 +12,7 @@ project(${TARGET_NAME} CXX)
 
 # gather the files
 set(headers
+  "${PROJECT_SOURCE_DIR}/src/Reader.h"
 )
 set(sources 
   "${PROJECT_SOURCE_DIR}/src/Reader.cpp"
