@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cassert>
 #include <iomanip>
+#include <string_view>
 
 using namespace std::string_literals;
 
@@ -30,19 +31,19 @@ Model::Model(const std::filesystem::path& filePath) {
     ifs.read(data.data(), file_size);
 
     m_data = decltype(m_data){ begin(data), end(data) };
-    process();
+    processData();
   }
 }
 
 
-void Model::dump(std::ostream& out, std::wostream& wout) {
+void Model::dump(std::ostream& out, std::wostream& wout) const {
   if (!empty()) {
-    out << "TX: " << ((m_txType == Model::TxType::INVALID) ? "INVALID"
+    out << "TX: " << ((m_txType == Model::TxType::INVALID)? "INVALID"
       : std::array<const char*, 3>{"T8FG", "T14SG", "T18SZ"}[ut_cast(m_txType)]) << std::endl;
 
     wout << L"Model name: \"" << getModelName() << L"\"" << std::endl;
 
-    out << "Model: " << ((m_modelType == Model::ModelType::INVALID) ? "INVALID"
+    out << "Model: " << ((m_modelType == Model::ModelType::INVALID)? "INVALID"
       : std::array<const char*, 4>{"Plane", "Heli", "Glider", "Multi"}[ut_cast(m_modelType)]) << "\n\n";
 
     val modulation = ut_cast(getModulation());
@@ -64,7 +65,7 @@ void Model::dump(std::ostream& out, std::wostream& wout) {
 
 
     out << "Reverse & End Point" << std::endl;
-    const size_t numChannels = (m_txType == Model::TxType::T18SZ) ? Model::t18Channels : Model::t14Channels;
+    val numChannels = getNumChannels();
     for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
       out << "\t" << std::setw(2) << chIdx + 1 << " " << std::setw(10) << std::left << m_funcName[m_functn[chIdx]] << ": "
         << ((m_reversed[chIdx]) ? "REVERSED" : "normal  ") << "  "
@@ -99,7 +100,7 @@ void Model::dump(std::ostream& out, std::wostream& wout) {
     }
     out << "\tRelease battery F/S: " << m_releaseBfsHW << std::endl;
 
-    if (m_txType == Model::TxType::T18SZ || m_modelType == Model::ModelType::Heli || m_modelType == Model::ModelType::Glider) {
+    if (isT18SZ() || m_modelType == Model::ModelType::Heli || m_modelType == Model::ModelType::Glider) {
       out << "Condition #" << std::endl;
       for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx) {
         wout << L"\t" << condIdx + 1 << L": " << m_conditionName[condIdx];
@@ -156,11 +157,11 @@ void Model::dump(std::ostream& out, std::wostream& wout) {
 }
 
 // Read all the parameters from m_data
-void Model::process() {
+void Model::processData() {
   m_modelName = readModelName();
 
   // Read TX type
-  const char* p = reinterpret_cast<const char*>(&m_data.front());
+  val p = reinterpret_cast<const char*>(&m_data.front());
   constexpr size_t TX_ID_LENGTH = 8;
   if (std::string_view{ p, TX_ID_LENGTH } == "T18SZ   "s) {
     m_txType = TxType::T18SZ;
@@ -180,14 +181,14 @@ void Model::process() {
   }
 
   // Read model type
-  const size_t i = (m_txType == TxType::T18SZ) ? 93 : 152;
-  const uint8_t v = m_data.at(i + 1) / 16;
+  val i = isT18SZ()? 93U : 152U;
+  val v = m_data.at(i + 1) / 16U;
   m_modelType = (v > ut_cast(ModelType::Multi))? ModelType::INVALID : static_cast<ModelType>(v);
   m_wingType = m_data.at(i) & 0x0F;
   m_tailType = (m_data.at(i) & 0x30) >> 4;
 
   // Read modulation
-  const size_t am = isT18SZ()? 92 : 154;
+  val am = isT18SZ()? 92U : 154U;
   if (m_txType == TxType::T8FG) {
     val w = ((m_data.at(am) & 0x30) + (m_data.at(am + 1) & 0x80)) >> 4;
     switch (w) {
@@ -196,7 +197,7 @@ void Model::process() {
     case 9: m_modulation = Modulation::FASST_MLT2;  break;
     }
   } else {
-    const size_t dm = (m_txType == TxType::T18SZ) ? 16 : 1;
+    val dm = isT18SZ()? 16U : 1U;
     m_modulation = static_cast<Modulation>((m_data.at(am) / dm) & 0x0F);
   }
 
@@ -234,8 +235,8 @@ std::wstring Model::readModelName() const noexcept {
 
 void Model::readFunction() {
   val isT18 = isT18SZ();
-  const size_t numChannels = (isT18)? t18Channels : t14Channels;
-  const size_t addr = (isT18)? 102         : 178;
+  val numChannels = getNumChannels();
+  val addr = (isT18)? 102U : 178U;
   for (size_t i = 0; i < numChannels; ++i) {
     m_functn[i] = m_data.at(addr + i);
   }
@@ -246,7 +247,7 @@ void Model::readFunction() {
   case ModelType::Multi:  m_funcName = FUNCTIONS_MULTI;   break;
   case ModelType::INVALID: assert(!"Invalid model type"); break;
   }
-  if (!isT18SZ() && m_modelType == ModelType::Plane) {
+  if (!isT18 && m_modelType == ModelType::Plane) {
     m_funcName[25] = "VPP"s;
   }
 }
@@ -262,7 +263,7 @@ void Model::readConditions() {
   m_conditionList[0] = 0;
 
   // Get names of the conditions
-  const size_t numTxConditions = (isT18SZ())? t18Conditions : t14Conditions;
+  val numTxConditions = (isT18SZ())? t18Conditions : t14Conditions;
   if (m_txType == TxType::T8FG) {
     switch (m_modelType) {
     case ModelType::Heli:   m_conditionName[0] = L"NORMAL";   m_conditionName[1] = L"IDLEUP1"; m_conditionName[2] = L"IDLEUP2";
@@ -277,15 +278,15 @@ void Model::readConditions() {
     default: break; // do nothing
     }
   } else { // T18SZ or T14SZ
-    if (m_txType == TxType::T18SZ || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider) {
+    if (isT18SZ() || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider) {
       m_numConditions = numTxConditions;
       for (size_t condIdx = 0; condIdx < numTxConditions; ++condIdx) {
         std::array<wchar_t, 8 + 1> buffer;
         buffer.fill(0);
         for (size_t charIdx = 0; charIdx < 8; ++charIdx) {
-          if (m_txType == TxType::T18SZ) { // UTF16
-            const char hi = static_cast<char>(m_data.at(28140 + condIdx * 578 + charIdx * 2));
-            const char lo = static_cast<char>(m_data.at(28140 + condIdx * 578 + charIdx * 2 + 1));
+          if (isT18SZ()) { // UTF16
+            val hi = static_cast<char>(m_data.at(28140 + condIdx * 578 + charIdx * 2));
+            val lo = static_cast<char>(m_data.at(28140 + condIdx * 578 + charIdx * 2 + 1));
             buffer[charIdx] = static_cast<wchar_t>((hi << 8) + lo);
           } else { // T14SZ, 1-byte
             buffer[charIdx] = m_data.at(1700 + condIdx * 9 + charIdx);
@@ -301,14 +302,14 @@ void Model::readConditions() {
   }
 
   // <<< DEBUG : The following code doesn't make sense (although seems to work)...
-  if (m_txType == TxType::T18SZ || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider) {
+  if (isT18SZ() || m_modelType == ModelType::Heli || m_modelType == ModelType::Glider) {
     std::array<size_t, t18Conditions> cp;
     cp.fill(0);
 
-    const size_t addr = (isT18SZ())? 64 : /*464*/451;
+    val addr = (isT18SZ())? 64U : /*464*/451U;
     for (size_t i = 1; i < numTxConditions; ++i) {
-      const uint8_t v = m_data.at(addr + (i - 1) * 4);
-      const uint8_t m = v & 0x0F;
+      auto v = m_data.at(addr + (i - 1) * 4);
+      const uint8_t m = v & 0x0FU;
       if (v > 127) {
         m_conditionState[m] = 128 + i;
         m_conditionHw[m] = addr + (i - 1) * 4 + 1;
@@ -333,9 +334,9 @@ void Model::readConditions() {
 
 Model::HwNamnes Model::getHardware(size_t a) const {
   HwNamnes hw;
-  const uint8_t hC0 = m_data.at(a);
-  const uint8_t i1 = m_data.at(a + 1);
-  const uint8_t i2 = m_data.at(a + 2);
+  val hC0 = m_data.at(a);
+  val i1 = m_data.at(a + 1);
+  val i2 = m_data.at(a + 2);
   if (hC0 == 0xFF) {
     hw.Type = -1; hw.Ctrl = "--";
     hw.Pos = (i1 != 0 || i2 != 0) ? "OFF" : "ON";
@@ -380,7 +381,7 @@ Model::HwNamnes Model::getHardware(size_t a) const {
 
 void Model::readConditionSelect() {
   auto logicSwitch = [this](size_t a) -> std::string {
-    const size_t aa = isT18SZ()? 456 : 328;
+    val aa = isT18SZ()? 456U : 328U;
     if ((m_data.at(a) & 48) == 48) {
       auto hw = getHardware(aa + (m_data.at(a) & 0x07U) * 6U);
       std::string alt = hw.Ctrl + " " + hw.Pos + " " + hw.Rev + " " + hw.Sym;
@@ -417,13 +418,13 @@ void Model::readServoRevers() {
   m_reversed.fill(false);
   m_reversedDG.fill(false);
 
-  const bool isT18 = isT18SZ();
+  val isT18 = isT18SZ();
   const uint8_t  revLo = m_data.at((isT18)? 252 : 268);
   const uint16_t revHi = m_data.at((isT18)? 253 : 165);
   const uint8_t  revDg = m_data.at((isT18)? 518 : 154) & 0xC0;
   const uint16_t rev = (revHi << 8) | revLo;
 
-  const size_t numChannels = (isT18)? t18Channels : t14Channels;
+  val numChannels = getNumChannels();
   for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
     m_reversed[chIdx] = (rev & (0x0001 << chIdx)) != 0;
   }
@@ -442,7 +443,7 @@ void Model::readEndPoints() {
     atl = 290; ath = 706; ln = t14ChannelsLow;
     all = 664; alh = 714;
   }
-  const size_t numChannels = (isT18SZ())? t18Channels : t14Channels;
+  val numChannels = getNumChannels();
   for (size_t i = 0; i < numChannels; ++i) {
     size_t j = (i < ln) ? atl + i * 2 : ath + (i - ln) * 2;
     m_travelLo[i] = m_data.at(j);  m_travelHi[i] = m_data.at(j + 1);
@@ -459,7 +460,7 @@ void Model::readServoSpeed() {
   } else {
     al = 1812; ah = 1828; ln = t14ChannelsLow; k = 2;
   }
-  const size_t numChannels = (isT18SZ()) ? t18Channels : t14Channels;
+  val numChannels = getNumChannels();
   for (size_t i = 0; i < numChannels; ++i) {
     const size_t j = (i < ln) ? al + i * k : ah + (i - ln) * k;
     m_sSpeed[i] = m_data.at(j);
@@ -474,7 +475,7 @@ void Model::readSubTrim() {
   } else {
     al = 306; ah = 166; ln = t14ChannelsLow;
   }
-  const size_t numChannels = (isT18SZ())? t18Channels : t14Channels;
+  val numChannels = getNumChannels();
   for (size_t i = 0; i < numChannels; ++i) {
     const size_t j = (i < ln)? al + i * 2 : ah + (i - ln) * 2;
     m_sTrim[i] = (m_data.at(j) << 8) | m_data.at(j + 1);
@@ -485,7 +486,7 @@ void Model::readControlAssignment() {
   assert(m_numConditions > 0);
   m_conditionalData.resize(m_numConditions);
 
-  const bool isT18 = isT18SZ();
+  val isT18 = isT18SZ();
 
   // Control assignments for each condition
   for (size_t condIdx = 0; condIdx < m_numConditions; ++condIdx) {
@@ -505,7 +506,7 @@ void Model::readControlAssignment() {
       for (size_t i = 0; i < t14Channels; ++i) {
         size_t a2 = 222 + m_data.at(190 + m_functn[i]);
         if (m_functn[i] >= 22 && m_functn[i] <= 24 && m_modelType == ModelType::Glider) {
-          const size_t a1 = ag[m_functn[i] - 22U];
+          val a1 = ag[m_functn[i] - 22U];
           if (m_data.at(a1) > 127) {
             a2 = a1 + m_conditionList[condIdx] + 1;
           }
@@ -555,7 +556,7 @@ void Model::readControlAssignment() {
   }
 
   // Trim rates
-  const size_t numChannels = (isT18) ? t18Channels : t14Channels;
+  val numChannels = getNumChannels();
   for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
     size_t atr, ats, x;
     if (isT18) {
@@ -590,7 +591,7 @@ void Model::readControlAssignment() {
 }
 
 void Model::readFailSafe() {
-  const bool isT18 = isT18SZ();
+  val isT18 = isT18SZ();
   m_FSMode = (m_data.at((isT18) ? 335 : 697) << 8) + m_data.at((isT18) ? 334 : 269);
   m_FSBattery = (m_data.at((isT18) ? 361 : 164) << 8) + m_data.at((isT18) ? 360 : 286);
 
@@ -600,7 +601,7 @@ void Model::readFailSafe() {
   } else {
     al = 270; ah = 698; ln = t14ChannelsLow;
   }
-  const size_t numChannels = (isT18)? t18Channels : t14Channels;
+  val numChannels = getNumChannels();
   for (size_t chIdx = 0; chIdx < numChannels; ++chIdx) {
     const size_t addr = (chIdx < ln)? al + chIdx * 2
       : ah + (chIdx - ln) * 2;
@@ -608,7 +609,7 @@ void Model::readFailSafe() {
     m_fsPosition[chIdx] = static_cast<int16_t>(round((st - 1024) / 6.73));
   }
 
-  auto hw = getHardware((isT18) ? 362 : 287);
+  auto hw = getHardware((isT18)? 362 : 287);
   m_releaseBfsHW = hw.Ctrl + "  " + hw.Pos + "  " + hw.Rev + "  " + hw.Sym;
 }
 
@@ -617,7 +618,7 @@ void Model::readSystemInfo() {
     return static_cast<uint32_t>((m_data.at(a) << 24) | (m_data.at(a + 1) << 16) | (m_data.at(a + 2) << 8) | m_data.at(a + 3));
   };
   auto getBFsVoltage = [this](size_t sysModultn, size_t a) -> double {
-    const size_t tlmType = TELEMETRY_TYPE[sysModultn % TELEMETRY_TYPE.size()];
+    val tlmType = TELEMETRY_TYPE[sysModultn % TELEMETRY_TYPE.size()];
     return (tlmType == 1) ? m_data.at(a) / 10.0
       : (tlmType == 2) ? TFHSS_VOLT_LIST[m_data.at(a) % TFHSS_VOLT_LIST.size()]
       : 0.0;
@@ -632,7 +633,7 @@ void Model::readSystemInfo() {
     adl = 2206; ddl = 1; av1 = 2208; av2 = 2209; mr = 1;
   }
   m_sysTelemAct = (m_data.at(ata) & mta) != 0;
-  const size_t sysModulation = ut_cast(m_modulation);
+  val sysModulation = ut_cast(m_modulation);
   if (isT18SZ()) { // && (sysModulation & 0x03) != 0) { // i.e. "FASST MULTI" or "FASST MLT2" // <<< DEBUG correct?
     m_Area = ((m_data.at(aa) & 0x80) == 0) ? Geo::General : Geo::France;
   }
@@ -679,9 +680,9 @@ const std::array<std::string, Model::NUMBER_OF_FUNCTIONS> Model::FUNCTIONS_MULTI
   "Mode"s, "Rudder2"s, "Butterfly"s, "Camber"s, "Motor"s,
   "Auxiliary7"s, "Auxiliary6"s, "Auxiliary5"s, "Auxiliary4"s, "Auxiliary3"s,
   "Auxiliary2"s, "Auxiliary1"s, "--"s };
-const std::array<uint8_t, 16> Model::TELEMETRY_TYPE = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0 };
+const std::array<uint8_t, 16> Model::TELEMETRY_TYPE  = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 0, 0, 0 };
 const std::array<double,  16> Model::TFHSS_VOLT_LIST = { 3.8, 0.0, 4.0, 4.2, 4.4, 4.6, 4.8, 5.0,
-                                                       5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.1, 7.4 };
+                                                         5.3, 5.6, 5.9, 6.2, 6.5, 6.8, 7.1, 7.4 };
 
 //------------------------------------------------------------------------------
 int main(int argc, char* argv[])

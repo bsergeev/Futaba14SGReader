@@ -12,13 +12,13 @@ template <typename E,
   return static_cast<typename std::underlying_type<E>::type>(e);
 }
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #define val const auto
@@ -64,26 +64,24 @@ public:
     double   BatteryFsV = 0.0;
   };
 
-  inline static const size_t NO_CONTROL_IDX = 31; // GCC 8 requires "inline", WTF? 
+  inline static constexpr size_t NO_CONTROL_IDX = 31; // GCC 8 requires "inline", WTF? 
 
-  static const size_t MAX_CH = 16; // std::max(t14Channels, t18Channels);
+private:
+  static constexpr size_t t14Channels = 12, t18Channels = 16;
+  static constexpr size_t MAX_CH = std::max(t14Channels, t18Channels);
+
   using hwCtrlIdx = size_t;
   struct ConditionDependentParams {
     ConditionDependentParams() { control.fill(NO_CONTROL_IDX); }
+
     bool operator ==(const ConditionDependentParams& o) const {
-      for (size_t i = 0; i < MAX_CH; ++i) {
-        if (!(control[i] == o.control[i])) {
-          return false;
-        }
-      }
-      return true;
+      return std::equal(std::begin(control), std::end(control), std::begin(o.control));
     }
+  //data:
     std::array<hwCtrlIdx, MAX_CH> control;
     std::string conditionControl;
   };
 
-private:
-  static const size_t t14Channels   = 12, t18Channels    = 16;
   static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
   static const size_t t14Conditions  = 5, t18Conditions = 8;
   static const size_t MAX_CONDITNS = std::max(t14Conditions, t18Conditions);
@@ -144,18 +142,18 @@ public: // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
   explicit Model(const std::filesystem::path& filePath);
 
   [[nodiscard]] bool empty() const noexcept { return m_data.empty(); }
+  [[nodiscard]] size_t getNumChannels() const noexcept { return isT18SZ()? t18Channels : t14Channels; }
 
   [[nodiscard]] std::wstring getModelName() const noexcept { return m_modelName; }
   [[nodiscard]] Modulation  getModulation() const noexcept { return m_modulation; }
 
-  void dump(std::ostream& out = std::cout, std::wostream& wout = std::wcout);
+  void dump(std::ostream& out = std::cout, std::wostream& wout = std::wcout) const;
   
 private:
   [[nodiscard]] static constexpr uint8_t cServoSpeed(uint8_t y) noexcept;
   [[nodiscard]] inline bool isT18SZ() const noexcept { return (m_txType == TxType::T18SZ); }
 
-  // Read all the parameters from m_data
-  void process();
+  void processData(); // Read all the parameters from m_data
   
   [[nodiscard]] std::wstring readModelName() const noexcept;
   [[nodiscard]] HwNamnes     getHardware(size_t a) const;
