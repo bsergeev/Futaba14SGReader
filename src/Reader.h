@@ -64,7 +64,7 @@ public:
     double   BatteryFsV = 0.0;
   };
 
-  inline static constexpr size_t NO_CONTROL_IDX = 31; // GCC 8 requires "inline", WTF? 
+  static constexpr size_t NO_CONTROL_IDX = 31;
 
 private:
   static constexpr size_t t14Channels = 12, t18Channels = 16;
@@ -82,9 +82,9 @@ private:
     std::string conditionControl;
   };
 
-  static const size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
-  static const size_t t14Conditions  = 5, t18Conditions = 8;
-  static const size_t MAX_CONDITNS = std::max(t14Conditions, t18Conditions);
+  static constexpr size_t t14ChannelsLow = 8, t18ChannelsLow = 12;
+  static constexpr size_t t14Conditions  = 5, t18Conditions = 8;
+  static constexpr size_t MAX_CONDITNS = std::max(t14Conditions, t18Conditions);
 
   static const size_t                  NUMBER_OF_FUNCTIONS = 33;
   static const std::array<std::string, NUMBER_OF_FUNCTIONS> FUNCTIONS_AIR;
