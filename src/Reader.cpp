@@ -564,7 +564,7 @@ void Model::readControlAssignment() {
     } else {
       atr = 246; ats = 258; x = m_data.at(190 + m_functn[chIdx]);
     }
-    val m = static_cast<uint8_t>(1U << (x % 8));
+    val  m = static_cast<uint8_t>(1U << (x % 8));
     auto v = static_cast<int16_t>(m_data.at(atr + x));
     m_trimRate[chIdx] = ((m_data.at(ats + x / 8) & m) != 0) ? -v : v;
   }
