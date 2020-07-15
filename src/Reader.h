@@ -1,5 +1,4 @@
 // Copyright 2012...2020 MileHighWings, All Rights Reserved
-
 #pragma once
 
 #include <cstdint>

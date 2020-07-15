@@ -10,7 +10,6 @@ message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 set(TARGET_NAME Reader)
 project(${TARGET_NAME} CXX)
 
-# gather the files
 set(headers
   "${PROJECT_SOURCE_DIR}/src/Reader.h"
 )
@@ -19,11 +18,11 @@ set(sources
 )
 
 add_executable(${TARGET_NAME} ${sources} ${headers})
-#include_directories(include src)
+include_directories(src)
 
 set_property(TARGET ${TARGET_NAME} PROPERTY CXX_STANDARD ${REQUIRED_CPP_VERSION})
+set_property(TARGET ${TARGET_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
 if (WIN32 OR WIN64)
-  set_property(TARGET ${TARGET_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
   set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ${TARGET_NAME})
   #target_link_libraries(${TARGET_NAME} ${Boost_LIBRARIES})
 elseif(UNIX)
