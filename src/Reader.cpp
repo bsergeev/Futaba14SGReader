@@ -158,7 +158,6 @@ void Model::dump(std::ostream& out, std::wostream& wout) const {
 
 // Read all the parameters from m_data
 void Model::processData() {
-  m_modelName = readModelName();
 
   // Read TX type
   val p = reinterpret_cast<const char*>(&m_data.front());
@@ -179,6 +178,8 @@ void Model::processData() {
       assert(!"Unknown TX type");
     }
   }
+
+  m_modelName = readModelName();
 
   // Read model type
   val i = isT18SZ()? 93U : 152U;
